@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">ReelsGuard</string>
+    <string name="service_description">Compte ton temps passé sur les Reels Instagram et cache le bouton Reels une fois ta limite quotidienne atteinte.</string>
+</resources>
