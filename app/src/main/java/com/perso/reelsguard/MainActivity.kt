@@ -10,6 +10,8 @@ import android.view.Gravity
 import android.widget.Button
 import android.widget.EditText
 import android.widget.LinearLayout
+import android.widget.ScrollView
+import android.widget.Switch
 import android.widget.TextView
 import android.widget.Toast
 
@@ -20,6 +22,8 @@ class MainActivity : Activity() {
     private lateinit var status: TextView
     private lateinit var remaining: TextView
     private lateinit var limitInput: EditText
+    private lateinit var detection: TextView
+    private lateinit var diagSwitch: Switch
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -67,7 +71,41 @@ class MainActivity : Activity() {
             alpha = 0.7f
         })
 
-        setContentView(root)
+        // --- Diagnostic ---
+        root.addView(TextView(this).apply {
+            text = "Diagnostic"
+            textSize = 20f
+            setPadding(0, pad * 2, 0, pad / 2)
+        })
+        detection = TextView(this).apply { alpha = 0.8f }
+        root.addView(detection)
+
+        diagSwitch = Switch(this).apply {
+            text = "Mode diagnostic (enregistre l'écran vu par ReelsGuard)"
+            setOnCheckedChangeListener { _, on -> Diagnostics.setEnabled(this@MainActivity, on) }
+        }
+        root.addView(diagSwitch)
+
+        root.addView(Button(this).apply {
+            text = "Partager le diagnostic"
+            setOnClickListener { shareDiagnostic() }
+        })
+
+        setContentView(ScrollView(this).apply { addView(root) })
+    }
+
+    private fun shareDiagnostic() {
+        val dump = Diagnostics.dump(this)
+        if (dump.isBlank()) {
+            Toast.makeText(this, "Active le mode diagnostic puis ouvre l'écran qui pose problème", Toast.LENGTH_LONG).show()
+            return
+        }
+        val send = Intent(Intent.ACTION_SEND).apply {
+            type = "text/plain"
+            putExtra(Intent.EXTRA_SUBJECT, "Diagnostic ReelsGuard")
+            putExtra(Intent.EXTRA_TEXT, Diagnostics.status(this@MainActivity) + "\n\n" + dump)
+        }
+        startActivity(Intent.createChooser(send, "Partager le diagnostic"))
     }
 
     override fun onResume() {
@@ -101,6 +139,9 @@ class MainActivity : Activity() {
             "Restant aujourd'hui : ${left / 60_000} min ${(left / 1000) % 60} s\n" +
                 "Utilisé : $usedMin / ${store.limitMinutes} min"
         }
+
+        detection.text = "Dernière détection : " + Diagnostics.status(this)
+        diagSwitch.isChecked = Diagnostics.isEnabled(this)
 
         val pending = store.pendingLimitMinutes
         limitInput.setText(store.limitMinutes.toString())

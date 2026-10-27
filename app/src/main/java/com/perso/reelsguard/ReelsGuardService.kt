@@ -102,6 +102,7 @@ class ReelsGuardService : AccessibilityService() {
         rule!!; root!!
 
         val watching = isWatching(rule, root)
+        reportDiagnostics(rule, root, watching, now)
 
         // 1) Comptage (plafonné pour ignorer les trous si le téléphone a dormi).
         if (watching && !store.isLimitReached) {
@@ -159,8 +160,39 @@ class ReelsGuardService : AccessibilityService() {
                 }
             }) return true
 
-        // Repli : l'onglet concerné de la barre du bas est sélectionné.
+        // Repli : un élément quasi plein écran dont l'identifiant évoque des vidéos courtes.
+        if (rule.viewerIdParts.isNotEmpty() && hasFullscreenViewer(rule, root, 0)) return true
+
+        // Dernier repli : l'onglet concerné de la barre du bas est sélectionné.
         return findTab(rule, root)?.isSelected == true
+    }
+
+    private fun hasFullscreenViewer(rule: AppRule, node: AccessibilityNodeInfo?, depth: Int): Boolean {
+        if (node == null || depth > 30) return false
+        val id = node.viewIdResourceName?.substringAfter(":id/")?.lowercase()
+        if (id != null && node.isVisibleToUser &&
+            rule.viewerIdParts.any { it in id } &&
+            rule.viewerIdExclusions.none { it in id } &&
+            node.bounds().height() > screenHeight * 0.5
+        ) return true
+        for (i in 0 until node.childCount) {
+            if (hasFullscreenViewer(rule, node.getChild(i), depth + 1)) return true
+        }
+        return false
+    }
+
+    private var lastDump = 0L
+
+    private fun reportDiagnostics(rule: AppRule, root: AccessibilityNodeInfo, watching: Boolean, now: Long) {
+        Diagnostics.setStatus(this, rule.name, watching, findTab(rule, root) != null)
+        if (Diagnostics.isEnabled(this) && now - lastDump > 3_000L) {
+            lastDump = now
+            Diagnostics.saveDump(
+                this,
+                "${rule.name} (${root.packageName}) · vidéos courtes détectées : $watching · écran ${screenHeight}px",
+                root
+            )
+        }
     }
 
     /** Le bouton à cacher dans la barre du bas, s'il est à l'écran. */

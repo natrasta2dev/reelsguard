@@ -18,6 +18,13 @@ data class AppRule(
     val viewerIds: List<String>,
     /** Textes présents seulement sur le fil de vidéos (ex. « Pour toi » sur TikTok). */
     val viewerTexts: List<String> = emptyList(),
+    /**
+     * Repli : un élément plein écran dont l'identifiant contient l'un de ces morceaux
+     * (ex. « reel » chez YouTube) signale un lecteur de vidéos courtes.
+     */
+    val viewerIdParts: List<String> = emptyList(),
+    /** Morceaux d'identifiants à ignorer (ex. l'étagère de Shorts sur l'accueil YouTube). */
+    val viewerIdExclusions: List<String> = emptyList(),
     /** Si non vide : une fois bloqué, on bascule vers cet onglet au lieu de faire « retour ». */
     val redirectTabLabels: List<String> = emptyList(),
 )
@@ -47,7 +54,12 @@ object AppRules {
             "reel_player_page_container",
             "reel_watch_player",
             "shorts_container",
+            "reel_watch_fragment_root",
+            "reel_player_overlay_v2",
+            "reel_time_bar",
         ),
+        viewerIdParts = listOf("reel", "shorts"),
+        viewerIdExclusions = listOf("shelf", "pivot", "tab", "thumbnail", "chip"),
     )
 
     val TIKTOK = AppRule(
