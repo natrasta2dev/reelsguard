@@ -27,6 +27,7 @@ import android.widget.Toast
 class ReelsGuardService : AccessibilityService() {
 
     private lateinit var store: UsageStore
+    private lateinit var schedule: Schedule
     private lateinit var windowManager: WindowManager
     private lateinit var powerManager: PowerManager
     private val handler = Handler(Looper.getMainLooper())
@@ -47,6 +48,7 @@ class ReelsGuardService : AccessibilityService() {
     override fun onServiceConnected() {
         super.onServiceConnected()
         store = UsageStore(this)
+        schedule = Schedule(this)
         windowManager = getSystemService(WINDOW_SERVICE) as WindowManager
         powerManager = getSystemService(POWER_SERVICE) as PowerManager
         lastTick = SystemClock.elapsedRealtime()
@@ -111,34 +113,42 @@ class ReelsGuardService : AccessibilityService() {
         val watching = isWatching(rule, root)
         reportDiagnostics(rule, root, watching, now)
 
-        // 1) Comptage (plafonné pour ignorer les trous si le téléphone a dormi).
-        if (watching && !store.isLimitReached) {
+        // App désélectionnée ou jour non actif : aucune restriction, aucun comptage.
+        if (!schedule.isAppEnabled(rule) || !schedule.isActiveToday()) {
+            removeCover()
+            return
+        }
+
+        val inWindow = schedule.isInWindow()
+
+        // 1) Comptage, seulement dans la plage horaire (plafonné si le téléphone a dormi).
+        if (watching && inWindow && !store.isLimitReached) {
             store.addUsage(elapsed.coerceAtMost(TICK_MS * 3))
             maybeWarn()
         }
 
-        // 2) Limite atteinte : bouton caché + sortie des vidéos courtes.
-        if (store.isLimitReached) {
+        // 2) Hors plage ou limite atteinte : bouton caché + sortie des vidéos courtes.
+        if (!inWindow || store.isLimitReached) {
             updateCover(findTab(rule, root))
             if (watching && now - lastKickOut > KICK_COOLDOWN_MS) {
                 lastKickOut = now
-                kickOut(rule, root)
+                kickOut(rule, root, if (inWindow) "Limite atteinte" else "Hors plage horaire")
             }
         } else {
             removeCover()
         }
     }
 
-    private fun kickOut(rule: AppRule, root: AccessibilityNodeInfo) {
+    private fun kickOut(rule: AppRule, root: AccessibilityNodeInfo, msg: String) {
         if (rule.redirectTabLabels.isNotEmpty()) {
             val target = findBottomNode(root, rule.redirectTabLabels)
             if (target != null && target.performAction(AccessibilityNodeInfo.ACTION_CLICK)) {
-                toast("Limite atteinte")
+                toast(msg)
                 return
             }
         }
         performGlobalAction(GLOBAL_ACTION_BACK)
-        toast("Limite atteinte")
+        toast(msg)
     }
 
     private fun maybeWarn() {
@@ -296,7 +306,7 @@ class ReelsGuardService : AccessibilityService() {
                 // le bouton disparaît visuellement, et le cache absorbe les appuis.
                 background = GradientDrawable().apply { setColor(barColor()) }
                 isClickable = true
-                setOnClickListener { toast("À demain") }
+                setOnClickListener { toast("Indisponible pour l'instant") }
             }
             windowManager.addView(view, params)
             tabCover = view
