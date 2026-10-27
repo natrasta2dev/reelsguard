@@ -59,6 +59,16 @@ Chaque app peut être activée ou désactivée dans les réglages.
    - **Notifications** : autorise-les pour voir le temps restant et les mises à jour.
 4. Règle ta limite dans **Réglages**.
 
+### Vérifier l'authenticité
+
+Les APK officiels sont publiés uniquement dans les [Releases](https://github.com/natrasta2dev/reelsguard/releases) de ce dépôt, avec leur empreinte SHA-256. Ils sont signés par le certificat dont l'empreinte SHA-256 est :
+
+```
+D1:4E:0F:35:BA:B8:A4:D2:B7:AD:FD:3C:CF:8C:59:73:4F:D0:7B:AF:0C:0E:1D:2C:A8:0A:89:6C:17:A1:BD:6C
+```
+
+Vérification : `apksigner verify --print-certs ReelsGuard-vX.Y.Z.apk`.
+
 ## Confidentialité
 
 ReelsGuard ne collecte **aucune** donnée : pas de compte, pas de publicité, pas de statistiques. Tout reste sur ton téléphone.
