@@ -40,6 +40,9 @@ class MainActivity : Activity() {
     private lateinit var limitInput: EditText
     private lateinit var pendingNote: TextView
     private lateinit var serviceButton: TextView
+    private lateinit var guide: LinearLayout
+    private lateinit var guideToggle: TextView
+    private var guideOpen = false
 
     private val handler = Handler(Looper.getMainLooper())
     private val ticker = object : Runnable {
@@ -118,6 +121,17 @@ class MainActivity : Activity() {
         }
         root.addView(centered(serviceButton, top = 40))
 
+        // Mode d'emploi : affiché d'office tant que le service est coupé
+        guideToggle = text("Comment l'activer ?", 13f, c.muted, regular).apply {
+            paintFlags = paintFlags or android.graphics.Paint.UNDERLINE_TEXT_FLAG
+            setPadding(dp(12), dp(12), dp(12), dp(12))
+            setOnClickListener { guideOpen = !guideOpen; refresh() }
+        }
+        root.addView(centered(guideToggle, top = 8))
+
+        guide = buildGuide()
+        root.addView(guide, LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(16) })
+
         setContentView(ScrollView(this).apply {
             isFillViewport = true
             setBackgroundColor(c.bg)
@@ -185,6 +199,65 @@ class MainActivity : Activity() {
             if (on) { setColor(Color.TRANSPARENT); setStroke(dp(1), c.line) }
             else { setColor(c.accent); setStroke(0, Color.TRANSPARENT) }
         }
+
+        val showGuide = !on || guideOpen
+        guide.visibility = if (showGuide) View.VISIBLE else View.GONE
+        guideToggle.visibility = if (on) View.VISIBLE else View.GONE
+        guideToggle.text = if (guideOpen) "Masquer l'aide" else "Comment l'activer ?"
+    }
+
+    private fun buildGuide(): LinearLayout {
+        val box = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            background = GradientDrawable().apply {
+                cornerRadius = dp(20).toFloat()
+                setStroke(dp(1), c.line)
+            }
+            setPadding(dp(20), dp(20), dp(20), dp(8))
+        }
+        val appSettings = {
+            startActivity(Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS).setData(android.net.Uri.parse("package:$packageName")))
+        }
+        val a11y = { startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS)) }
+        val steps = listOf(
+            Triple("Autoriser les paramètres restreints",
+                "Infos de l'appli → ⋮ en haut à droite → Autoriser les paramètres restreints. " +
+                    "L'option n'apparaît qu'après une première tentative d'activation refusée.", appSettings),
+            Triple("Activer le service",
+                "Accessibilité → Applications installées → ReelsGuard → activer.", a11y),
+            Triple("Batterie non restreinte",
+                "Infos de l'appli → Batterie → Non restreinte, sinon le téléphone peut endormir ReelsGuard.", appSettings),
+            Triple("Régler ta limite",
+                "Tape le nombre de minutes par jour puis Enregistrer. Le compteur est commun à " +
+                    "Reels, Shorts et TikTok et repart à zéro à minuit.", null),
+        )
+        steps.forEachIndexed { i, (title, body, action) ->
+            box.addView(guideStep(i + 1, title, body, action))
+        }
+        box.addView(text("Après une mise à jour de ReelsGuard, vérifie que le service est toujours actif.",
+            12f, c.muted, regular).apply { setPadding(0, dp(4), 0, dp(12)) })
+        return box
+    }
+
+    private fun guideStep(n: Int, title: String, body: String, action: (() -> Unit)?): View {
+        val row = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            setPadding(0, 0, 0, dp(16))
+            if (action != null) setOnClickListener { action() }
+        }
+        row.addView(text("$n", 13f, c.bg, medium).apply {
+            background = GradientDrawable().apply { shape = GradientDrawable.OVAL; setColor(c.fg) }
+        }, LinearLayout.LayoutParams(dp(24), dp(24)).apply { rightMargin = dp(14) })
+
+        val col = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
+        col.addView(text(title + if (action != null) "  ›" else "", 15f, c.fg, medium).apply { gravity = Gravity.START })
+        col.addView(text(body, 13f, c.muted, regular).apply {
+            gravity = Gravity.START
+            setPadding(0, dp(4), 0, 0)
+            setLineSpacing(0f, 1.2f)
+        })
+        row.addView(col, LinearLayout.LayoutParams(0, -2, 1f))
+        return row
     }
 
     private fun isServiceEnabled(): Boolean {
