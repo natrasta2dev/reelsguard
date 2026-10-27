@@ -23,6 +23,13 @@ data class AppRule(
     /** Vrai si la barre d'onglets peut aussi être en haut de l'écran (Facebook). */
     val navTopToo: Boolean = false,
     /**
+     * App sans section vidéo distincte : tout le temps passé dans l'app compte, et une fois
+     * bloquée on revient à l'écran d'accueil du téléphone.
+     */
+    val wholeApp: Boolean = false,
+    /** Part de la hauteur d'écran qu'un lecteur doit occuper pour compter comme « plein écran ». */
+    val fullscreenRatio: Float = 0.5f,
+    /**
      * Repli : un élément plein écran dont l'identifiant contient l'un de ces morceaux
      * (ex. « reel » chez YouTube) signale un lecteur de vidéos courtes.
      */
@@ -98,7 +105,57 @@ object AppRules {
         navTopToo = true,
     )
 
-    val ALL = listOf(INSTAGRAM, YOUTUBE, TIKTOK, FACEBOOK)
+    /** Snapchat : seul Spotlight est concerné, les discussions restent libres. */
+    val SNAPCHAT = AppRule(
+        name = "Snapchat",
+        packages = setOf("com.snapchat.android"),
+        tabIds = emptyList(),
+        tabLabels = listOf("Spotlight"),
+        viewerIds = emptyList(),
+        viewerTexts = listOf("Spotlight"),
+        viewerTextMaxTop = 0.15f,
+    )
+
+    /** X : le lecteur vidéo plein écran (défilement vertical). */
+    val X = AppRule(
+        name = "X",
+        packages = setOf("com.twitter.android"),
+        tabIds = emptyList(),
+        tabLabels = emptyList(),
+        viewerIds = emptyList(),
+        viewerIdParts = listOf("immersive", "video_player", "fullscreen", "media_viewer"),
+        viewerIdExclusions = listOf("thumbnail", "preview", "avatar", "inline"),
+        fullscreenRatio = 0.85f,
+    )
+
+    /** Reddit : le lecteur vidéo plein écran. */
+    val REDDIT = AppRule(
+        name = "Reddit",
+        packages = setOf("com.reddit.frontpage"),
+        tabIds = emptyList(),
+        tabLabels = emptyList(),
+        viewerIds = emptyList(),
+        viewerIdParts = listOf("video", "fullscreen", "media_screen", "player"),
+        viewerIdExclusions = listOf("thumbnail", "preview", "avatar", "inline", "icon"),
+        fullscreenRatio = 0.85f,
+    )
+
+    val PINTEREST = AppRule(
+        name = "Pinterest", packages = setOf("com.pinterest"),
+        tabIds = emptyList(), tabLabels = emptyList(), viewerIds = emptyList(), wholeApp = true,
+    )
+
+    val TWITCH = AppRule(
+        name = "Twitch", packages = setOf("tv.twitch.android.app"),
+        tabIds = emptyList(), tabLabels = emptyList(), viewerIds = emptyList(), wholeApp = true,
+    )
+
+    val THREADS = AppRule(
+        name = "Threads", packages = setOf("com.instagram.barcelona"),
+        tabIds = emptyList(), tabLabels = emptyList(), viewerIds = emptyList(), wholeApp = true,
+    )
+
+    val ALL = listOf(INSTAGRAM, YOUTUBE, TIKTOK, FACEBOOK, SNAPCHAT, X, REDDIT, PINTEREST, TWITCH, THREADS)
 
     fun forPackage(pkg: String): AppRule? = ALL.firstOrNull { pkg in it.packages }
 }

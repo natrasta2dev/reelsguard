@@ -153,8 +153,12 @@ class MainActivity : Activity() {
 
         bar.progress = if (limit == 0) 1f else (used / (limit * 60_000f)).coerceIn(0f, 1f)
         usage.text = "${used / 60_000} / $limit min"
-        perApp.text = APPS.filter { (rule, _) -> schedule.isAppEnabled(rule) }
-            .joinToString("  ·  ") { (rule, name) -> "$name ${store.usedToday(rule) / 60_000}" }
+        // Seulement les apps utilisées aujourd'hui, de la plus à la moins utilisée.
+        perApp.text = APPS.map { (rule, name) -> name to store.usedToday(rule) }
+            .filter { it.second >= 60_000 }
+            .sortedByDescending { it.second }
+            .joinToString("  ·  ") { (name, ms) -> "$name ${ms / 60_000}" }
+        perApp.visibility = if (perApp.text.isEmpty()) View.GONE else View.VISIBLE
 
         val days = store.history(7)
         chart.days = days
@@ -270,6 +274,13 @@ class MainActivity : Activity() {
 
     companion object {
         val APPS = listOf(AppRules.INSTAGRAM to "Instagram", AppRules.YOUTUBE to "YouTube", AppRules.TIKTOK to "TikTok",
-            AppRules.FACEBOOK to "Facebook")
+            AppRules.FACEBOOK to "Facebook",
+            AppRules.SNAPCHAT to "Snapchat",
+            AppRules.X to "X",
+            AppRules.REDDIT to "Reddit",
+            AppRules.PINTEREST to "Pinterest",
+            AppRules.TWITCH to "Twitch",
+            AppRules.THREADS to "Threads",
+        )
     }
 }
