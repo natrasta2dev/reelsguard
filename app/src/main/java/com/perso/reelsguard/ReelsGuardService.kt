@@ -133,19 +133,19 @@ class ReelsGuardService : AccessibilityService() {
         if (rule.redirectTabLabels.isNotEmpty()) {
             val target = findBottomNode(root, rule.redirectTabLabels)
             if (target != null && target.performAction(AccessibilityNodeInfo.ACTION_CLICK)) {
-                toast("Temps écoulé pour aujourd'hui, direction ton profil 🙂")
+                toast("Limite atteinte")
                 return
             }
         }
         performGlobalAction(GLOBAL_ACTION_BACK)
-        toast("Temps ${rule.name} écoulé pour aujourd'hui 🙂")
+        toast("Limite atteinte")
     }
 
     private fun maybeWarn() {
         val remaining = store.remainingMs
         if (!warnedFiveMin && remaining in 1..5 * 60_000L && store.limitMinutes > 5) {
             warnedFiveMin = true
-            toast("Plus que 5 min de vidéos courtes aujourd'hui")
+            toast("5 min restantes")
         }
         if (remaining > 5 * 60_000L) warnedFiveMin = false
     }
@@ -296,7 +296,7 @@ class ReelsGuardService : AccessibilityService() {
                 // le bouton disparaît visuellement, et le cache absorbe les appuis.
                 background = GradientDrawable().apply { setColor(barColor()) }
                 isClickable = true
-                setOnClickListener { toast("Bloqué jusqu'à demain") }
+                setOnClickListener { toast("À demain") }
             }
             windowManager.addView(view, params)
             tabCover = view
