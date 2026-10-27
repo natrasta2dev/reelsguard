@@ -1,4 +1,4 @@
-package com.perso.reelsguard
+package fr.codapps.reelsguard
 
 import android.Manifest
 import android.app.Activity
@@ -40,6 +40,9 @@ class MainActivity : Activity() {
     private lateinit var guide: LinearLayout
     private lateinit var guideToggle: TextView
     private var guideOpen = false
+    private lateinit var mainScreen: View
+    private lateinit var updateBanner: TextView
+    private var blockingShown = false
 
     private val handler = Handler(Looper.getMainLooper())
     private val ticker = object : Runnable {
@@ -87,6 +90,10 @@ class MainActivity : Activity() {
         streak = ui.text("", 15f, c.fg, ui.medium)
         root.addView(ui.centered(streak, top = 8))
 
+        // Mise à jour facultative disponible
+        updateBanner = ui.pill("", filled = c.accent, textColor = Color.WHITE) { UpdateChecker.openDownload(this) }
+        root.addView(ui.centered(updateBanner, top = 40))
+
         // Actions
         root.addView(ui.centered(ui.pill("Réglages", filled = c.fg, textColor = c.bg) {
             startActivity(Intent(this, SettingsActivity::class.java))
@@ -102,7 +109,10 @@ class MainActivity : Activity() {
         guide = buildGuide()
         root.addView(guide, LinearLayout.LayoutParams(-1, -2).apply { topMargin = ui.dp(16) })
 
-        setContentView(ui.screen(root))
+        root.addView(ui.footer(), LinearLayout.LayoutParams(-1, -2).apply { topMargin = ui.dp(48) })
+
+        mainScreen = ui.screen(root)
+        setContentView(mainScreen)
         askNotificationPermission()
     }
 
@@ -110,6 +120,54 @@ class MainActivity : Activity() {
         super.onResume()
         handler.post(ticker)
         RemainingWidget.update(this)
+        applyUpdateState()
+        UpdateChecker.check(this) { applyUpdateState() }
+    }
+
+    // ---------- mises à jour ----------
+
+    /** Majeure : écran bloquant. Mineure : bandeau discret. */
+    private fun applyUpdateState() {
+        val kind = UpdateChecker.kind(this)
+        if (kind == UpdateChecker.Kind.MAJOR) {
+            if (!blockingShown) { setContentView(buildUpdateScreen()); blockingShown = true }
+            return
+        }
+        if (blockingShown) { setContentView(mainScreen); blockingShown = false }
+        val r = UpdateChecker.cached(this)
+        updateBanner.visibility = if (kind == UpdateChecker.Kind.MINOR) View.VISIBLE else View.GONE
+        if (r != null) updateBanner.text = "Mettre à jour vers la v${r.version}"
+    }
+
+    private fun buildUpdateScreen(): View {
+        val r = UpdateChecker.cached(this)
+        val col = ui.column().apply { gravity = Gravity.CENTER }
+        col.addView(ui.centered(ui.text("REELSGUARD", 12f, c.muted, ui.medium).apply { letterSpacing = 0.25f }))
+        col.addView(ui.centered(ui.text("Mise à jour\nobligatoire", 34f, c.fg, ui.light).apply {
+            setLineSpacing(0f, 1.1f)
+        }, top = 40))
+        col.addView(ui.centered(ui.text("v${UpdateChecker.currentVersion()}  →  v${r?.version ?: "?"}", 15f, c.muted, ui.regular), top = 16))
+        col.addView(ui.centered(ui.text(
+            "Cette version n'est plus prise en charge. La protection continue de fonctionner, " +
+                "mais l'application doit être mise à jour pour être utilisée.",
+            13f, c.muted, ui.regular).apply { setLineSpacing(0f, 1.2f) }, top = 24))
+        val notes = r?.notes?.lines()?.filter { it.isNotBlank() }?.take(8)?.joinToString("\n")
+        if (!notes.isNullOrBlank()) {
+            col.addView(ui.text(notes, 13f, c.fg, ui.regular).apply {
+                gravity = Gravity.START
+                setLineSpacing(0f, 1.2f)
+                background = GradientDrawable().apply { cornerRadius = ui.dp(16).toFloat(); setStroke(ui.dp(1), c.line) }
+                setPadding(ui.dp(16), ui.dp(16), ui.dp(16), ui.dp(16))
+            }, LinearLayout.LayoutParams(-1, -2).apply { topMargin = ui.dp(24) })
+        }
+        col.addView(ui.centered(ui.pill("Télécharger la mise à jour", filled = c.accent, textColor = Color.WHITE) {
+            UpdateChecker.openDownload(this)
+        }, top = 32))
+        col.addView(ui.centered(ui.link("Voir sur GitHub") {
+            startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(r?.pageUrl ?: UpdateChecker.REPO_URL)))
+        }, top = 8))
+        col.addView(ui.footer(), LinearLayout.LayoutParams(-1, -2).apply { topMargin = ui.dp(48) })
+        return ui.screen(col)
     }
 
     override fun onPause() {

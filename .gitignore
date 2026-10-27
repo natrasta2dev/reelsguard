@@ -1,8 +1,18 @@
+# Gradle / Android
 .gradle/
 build/
 app/build/
 local.properties
+captures/
+.externalNativeBuild/
+.cxx/
+
+# IDE
 .idea/
 *.iml
 .DS_Store
-captures/
+
+# Clés de signature : ne jamais les publier
+*.jks
+*.keystore
+keystore.properties

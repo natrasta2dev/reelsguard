@@ -1,4 +1,4 @@
-package com.perso.reelsguard
+package fr.codapps.reelsguard
 
 /**
  * Description d'une app surveillée : comment reconnaître l'écran de vidéos courtes,

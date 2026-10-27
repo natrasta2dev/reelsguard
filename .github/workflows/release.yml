@@ -1,0 +1,100 @@
+# Publie une release signée quand un tag de version est poussé (ex. v1.0.0).
+#
+# Secrets requis (Settings → Secrets and variables → Actions) :
+#   RG_KEYSTORE_B64       keystore de signature encodé en base64
+#   RG_KEYSTORE_PASSWORD  mot de passe du keystore (et de la clé)
+#   RG_KEY_ALIAS          (facultatif) alias de la clé, « reelsguard » par défaut
+name: Release
+
+on:
+  push:
+    tags: ["v*.*.*"]
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Vérifier que le tag correspond à versionName
+        shell: bash
+        run: |
+          TAG="${GITHUB_REF_NAME#v}"
+          VERSION=$(grep -oP 'versionName = "\K[^"]+' app/build.gradle.kts)
+          echo "Tag : $TAG · versionName : $VERSION"
+          if [ "$TAG" != "$VERSION" ]; then
+            echo "::error::Le tag v$TAG ne correspond pas à versionName ($VERSION) dans app/build.gradle.kts"
+            exit 1
+          fi
+          echo "VERSION=$VERSION" >> "$GITHUB_ENV"
+
+      - name: Récupérer la clé de signature
+        shell: bash
+        env:
+          KEYSTORE_B64: ${{ secrets.RG_KEYSTORE_B64 }}
+        run: |
+          if [ -z "$KEYSTORE_B64" ]; then
+            echo "::error::Secret RG_KEYSTORE_B64 manquant : impossible de signer la release."
+            exit 1
+          fi
+          echo "$KEYSTORE_B64" | base64 -d > "$RUNNER_TEMP/release.jks"
+          echo "RG_KEYSTORE_PATH=$RUNNER_TEMP/release.jks" >> "$GITHUB_ENV"
+
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: "8.7"
+
+      - name: Compiler (release signée)
+        shell: bash
+        env:
+          RG_KEYSTORE_PASSWORD: ${{ secrets.RG_KEYSTORE_PASSWORD }}
+          RG_KEY_ALIAS: ${{ secrets.RG_KEY_ALIAS }}
+        run: |
+          set -o pipefail
+          gradle assembleRelease --no-daemon 2>&1 | tee build.log
+          APK="ReelsGuard-v$VERSION.apk"
+          cp app/build/outputs/apk/release/app-release.apk "$APK"
+          sha256sum "$APK" > "$APK.sha256"
+          echo "APK=$APK" >> "$GITHUB_ENV"
+
+      - name: Remonter les erreurs
+        if: failure()
+        shell: bash
+        run: |
+          [ -f build.log ] || exit 0
+          grep -E "^e: |error:|ERROR:|AAPT" build.log | head -40 | while IFS= read -r line; do
+            echo "::error::${line}"
+          done
+
+      - name: Notes de version depuis CHANGELOG.md
+        shell: bash
+        run: |
+          awk -v v="$VERSION" '
+            $0 ~ "^## \\[" v "\\]" { on=1; next }
+            on && /^## \[/ { exit }
+            on { print }
+          ' CHANGELOG.md > notes.md
+          {
+            echo
+            echo "---"
+            echo "**Installation** : télécharge \`$APK\` depuis ton téléphone, puis suis le [guide d'installation](https://github.com/${GITHUB_REPOSITORY}#installation)."
+            echo
+            echo "SHA-256 : \`$(cut -d' ' -f1 "$APK.sha256")\`"
+          } >> notes.md
+
+      - uses: softprops/action-gh-release@v2
+        with:
+          name: ReelsGuard v${{ env.VERSION }}
+          body_path: notes.md
+          files: |
+            ${{ env.APK }}
+            ${{ env.APK }}.sha256
+          make_latest: true

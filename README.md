@@ -1,33 +1,127 @@
+<div align="center">
+
 # ReelsGuard
 
-Petite app Android perso qui se pose par-dessus Instagram, YouTube et TikTok (sans les modifier),
-avec **un seul compteur commun** pour toutes les vidéos courtes :
+**Reprends le contrôle de ton temps face aux vidéos courtes.**
 
-- **Instagram** : temps compté sur les Reels (onglet ou Reel ouvert depuis le fil / les DM) ; limite atteinte → bouton Reels caché, « retour » si un Reel s'ouvre ;
-- **YouTube** : pareil pour les Shorts ;
-- **TikTok** : temps compté sur le fil (Pour toi / Abonnements) ; limite atteinte → bouton Accueil caché et bascule directe sur ton profil ;
-- le compteur repart à zéro à minuit ; alerte à 5 min de la fin.
+Une app Android libre et gratuite qui limite les Reels, Shorts, TikTok et autres fils addictifs,
+sans modifier les applications et sans collecter aucune donnée.
 
-Baisser la limite s'applique tout de suite ; l'augmenter ne compte qu'à partir du lendemain (anti-craquage). `0` = Reels toujours bloqués.
+[![Dernière version](https://img.shields.io/github/v/release/natrasta2dev/reelsguard?label=version)](https://github.com/natrasta2dev/reelsguard/releases/latest)
+[![Licence GPL-3.0](https://img.shields.io/badge/licence-GPL--3.0-blue)](LICENSE)
+![Android 8+](https://img.shields.io/badge/Android-8.0%2B-3ddc84)
+
+[**Télécharger l'APK**](https://github.com/natrasta2dev/reelsguard/releases/latest) · [Installation](#installation) · [Confidentialité](PRIVACY.md) · [Mentions légales](LEGAL.md)
+
+</div>
+
+---
+
+## Fonctionnalités
+
+- **Une limite quotidienne commune** à toutes les apps choisies, avec une limite différente le week-end si tu veux.
+- **Bouton masqué** : une fois la limite atteinte, le bouton Reels / Shorts / Spotlight disparaît, recouvert d'un cache de la couleur exacte de la barre.
+- **Sortie automatique** si tu tombes quand même sur une vidéo courte (retour en arrière, ou profil sur TikTok).
+- **Quota par app** inclus dans la limite commune (ex. 20 min de TikTok maximum).
+- **Jours actifs** et **plages horaires** multiples : en dehors, les vidéos courtes sont cachées.
+- **Pause forcée** après un temps de visionnage continu (15 min → 5 min de pause par défaut).
+- **Écran « Respire »** de quelques secondes avant chaque ouverture, pour casser le réflexe.
+- **Mode strict** : réglages verrouillés, déverrouillage après 2 min d'attente, impossible de couper le service sur un coup de tête.
+- **Historique** des 7 derniers jours, moyenne, détail par app et **série** de jours sous la limite.
+- **Widget** d'écran d'accueil et **notification discrète** du temps restant.
+- **Mises à jour** : notification pour une version mineure, mise à jour obligatoire pour une version majeure.
+
+## Apps prises en charge
+
+| App | Ce qui est limité |
+|---|---|
+| Instagram | Reels (onglet et Reels ouverts depuis le fil / les messages) |
+| YouTube | Shorts |
+| TikTok | Fil « Pour toi » / « Abonnements » (redirection vers le profil) |
+| Facebook | Reels / Vidéo (app classique, pas Lite) |
+| Snapchat | Spotlight (les discussions restent libres) |
+| X | Lecteur vidéo plein écran |
+| Reddit | Lecteur vidéo plein écran |
+| Pinterest, Twitch, Threads | L'app entière |
+
+Chaque app peut être activée ou désactivée dans les réglages.
+
+> Les applications surveillées changent régulièrement leur interface : la détection peut cesser de fonctionner après l'une de leurs mises à jour. Le [diagnostic intégré](#signaler-un-problème) aide à la corriger.
 
 ## Installation
 
-1. Ouvrir le dossier dans **Android Studio** (il télécharge Gradle et le SDK tout seul).
-2. Brancher le téléphone (débogage USB activé) → **Run ▶**.
-3. Dans l'app : « Activer le service d'accessibilité » → ReelsGuard → activer.
-   - Sur Android 13+, si l'option est grisée : Paramètres → Applis → ReelsGuard → ⋮ → *Autoriser les paramètres restreints*, puis réessayer.
-4. Régler la limite (60 min par défaut).
+1. Sur ton téléphone, télécharge `ReelsGuard-vX.Y.Z.apk` depuis la [dernière release](https://github.com/natrasta2dev/reelsguard/releases/latest) et ouvre-le.
+2. **Play Protect** peut bloquer l'installation (comme pour toute app hors Play Store qui utilise l'accessibilité) : Play Store → profil → Play Protect → ⚙️ → désactive temporairement « Analyser les applis », installe, puis réactive-le. Sur Samsung, désactive aussi temporairement le *Blocage automatique*.
+3. Ouvre ReelsGuard et suis le **mode d'emploi intégré** :
+   - **Paramètres restreints** (Android 13+) : Paramètres → Applications → ReelsGuard → ⋮ → *Autoriser les paramètres restreints* ;
+   - **Service d'accessibilité** : Accessibilité → Applications installées → ReelsGuard → activer ;
+   - **Batterie** : Applications → ReelsGuard → Batterie → *Non restreinte* ;
+   - **Notifications** : autorise-les pour voir le temps restant et les mises à jour.
+4. Règle ta limite dans **Réglages**.
 
-## Si ça ne détecte plus après une mise à jour d'une app
+## Confidentialité
 
-Instagram renomme parfois ses éléments internes. Identifiants et libellés de chaque app :
-`AppRules.kt`. Pour retrouver les bons :
-Android Studio → *Layout Inspector*, ou l'app « Developer Assistant », sur l'écran des Reels.
-Un repli par texte (« Reels ») existe déjà pour le bouton.
+ReelsGuard ne collecte **aucune** donnée : pas de compte, pas de publicité, pas de statistiques. Tout reste sur ton téléphone.
+La seule connexion réseau est une vérification des mises à jour auprès de l'API publique de GitHub.
+Détails dans [PRIVACY.md](PRIVACY.md).
 
-## Récupérer l'APK sans Android Studio
+Le service d'accessibilité sert uniquement à savoir quelle app est ouverte, détecter les vidéos courtes, masquer le bouton concerné et revenir en arrière. Aucune saisie (mots de passe, messages) n'est lue ni enregistrée.
 
-Chaque push sur `main` compile l'APK via GitHub Actions et le publie dans
-**Releases** (dernière release → `ReelsGuard.apk`). Ouvre ce lien depuis le téléphone,
-télécharge, puis autorise l'installation depuis le navigateur.
-On peut aussi relancer la compilation à la main : onglet *Actions* → *Build APK* → *Run workflow*.
+## Mises à jour
+
+Les versions suivent le schéma `MAJEUR.MINEUR.CORRECTIF` :
+
+- **mineure ou correctif** (ex. 1.0.0 → 1.1.0) : une notification te prévient, la mise à jour est facultative ;
+- **majeure** (ex. 1.x → 2.0.0) : l'app affiche un écran de mise à jour obligatoire (la protection, elle, continue de tourner).
+
+Les nouveautés sont listées dans le [CHANGELOG](CHANGELOG.md).
+
+## Signaler un problème
+
+Si une app n'est plus détectée : ouvre ReelsGuard, **appui long sur « REELSGUARD »** en haut → *Activer* le diagnostic, va sur l'écran concerné quelques secondes, reviens et appuie sur *Partager*. Joins ce texte à une [issue](https://github.com/natrasta2dev/reelsguard/issues/new/choose).
+
+⚠️ Le diagnostic contient la structure de l'écran, qui peut inclure des textes visibles (noms, légendes). Relis-le et retire ce qui est personnel avant de le publier.
+
+## Compiler soi-même
+
+Prérequis : Android Studio (ou JDK 17 + Android SDK 34 + Gradle 8.7).
+
+```bash
+git clone https://github.com/natrasta2dev/reelsguard.git
+cd reelsguard
+gradle assembleDebug   # APK : app/build/outputs/apk/debug/
+```
+
+La version debug s'installe à côté de la version officielle (identifiant `fr.codapps.reelsguard.debug`).
+
+### Publier une version (mainteneurs)
+
+1. Mettre à jour `versionCode` et `versionName` dans `app/build.gradle.kts`, et `CHANGELOG.md`.
+2. Pousser un tag identique : `git tag v1.1.0 && git push origin v1.1.0`.
+3. Le workflow *Release* compile, signe et publie l'APK. Il utilise les secrets `RG_KEYSTORE_B64`, `RG_KEYSTORE_PASSWORD` et `RG_KEY_ALIAS` ; la clé de signature n'est jamais dans le dépôt.
+
+## Contribuer
+
+Les contributions sont bienvenues : voir [CONTRIBUTING.md](CONTRIBUTING.md).
+
+## Licence et mentions légales
+
+ReelsGuard est un logiciel libre sous licence [GNU GPL v3.0](LICENSE).
+Voir aussi les [mentions légales](LEGAL.md).
+
+Instagram, Facebook, Threads, YouTube, TikTok, Snapchat, X, Reddit, Pinterest et Twitch sont des marques de leurs propriétaires respectifs. ReelsGuard n'est ni affilié, ni soutenu, ni approuvé par ces sociétés.
+
+---
+
+<div align="center">
+
+Made by [Cod'Apps](https://codapps.fr)
+
+</div>
+
+<details>
+<summary>English summary</summary>
+
+ReelsGuard is a free, open-source (GPL-3.0) Android app that limits short-form video feeds — Instagram Reels, YouTube Shorts, TikTok, Facebook Reels, Snapchat Spotlight, X and Reddit video players, plus Pinterest, Twitch and Threads — using a shared daily time budget, schedules, forced breaks, a "breathe" delay screen and a strict mode. It works through Android's accessibility service, never modifies the target apps, and collects no data. Download the APK from [Releases](https://github.com/natrasta2dev/reelsguard/releases/latest). The app UI is in French.
+
+</details>

@@ -1,4 +1,4 @@
-package com.perso.reelsguard
+package fr.codapps.reelsguard
 
 import android.accessibilityservice.AccessibilityService
 import android.content.Context
@@ -130,6 +130,7 @@ class ReelsGuardService : AccessibilityService() {
         if (now - lastWidgetUpdate > 60_000L) {
             lastWidgetUpdate = now
             RemainingWidget.update(this, force = false)
+            UpdateChecker.check(this) // limité en interne à une fois toutes les 6 h
         }
 
         val root = if (powerManager.isInteractive) foregroundRoot() else null

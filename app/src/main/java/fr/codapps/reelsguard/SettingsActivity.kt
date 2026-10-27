@@ -1,4 +1,4 @@
-package com.perso.reelsguard
+package fr.codapps.reelsguard
 
 import android.app.Activity
 import android.app.TimePickerDialog
@@ -82,6 +82,8 @@ class SettingsActivity : Activity() {
         }
         root.addView(content, LinearLayout.LayoutParams(-1, -2))
         buildContent()
+        // Pied de page hors du bloc verrouillable : les mentions légales restent accessibles.
+        root.addView(ui.footer(), LinearLayout.LayoutParams(-1, -2).apply { topMargin = ui.dp(48) })
 
         setContentView(ui.screen(root))
         loadFields()
@@ -89,6 +91,8 @@ class SettingsActivity : Activity() {
 
     override fun onResume() {
         super.onResume()
+        // Mise à jour obligatoire : retour à l'accueil, qui affiche l'écran de mise à jour.
+        if (UpdateChecker.isUpdateRequired(this)) { finish(); return }
         wasLocked = null
         handler.post(ticker)
         refreshChips()

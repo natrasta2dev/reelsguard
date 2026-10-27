@@ -1,4 +1,4 @@
-package com.perso.reelsguard
+package fr.codapps.reelsguard
 
 import android.app.Activity
 import android.content.Context
@@ -143,6 +143,39 @@ class Ui(private val a: Activity) {
 
     fun lp(w: Int, h: Int, left: Int = 0, top: Int = 0) = LinearLayout.LayoutParams(w, h).apply {
         leftMargin = dp(left); topMargin = dp(top)
+    }
+
+    /** Pied de page : « Made by Cod'Apps » (lien codapps.fr), mentions légales, version. */
+    fun footer(): View {
+        val col = LinearLayout(a).apply {
+            orientation = LinearLayout.VERTICAL
+            gravity = Gravity.CENTER_HORIZONTAL
+        }
+        val made = row()
+        made.addView(text("Made by ", 12f, c.muted, regular))
+        made.addView(text("Cod'Apps", 12f, c.fg, medium).apply {
+            paintFlags = paintFlags or Paint.UNDERLINE_TEXT_FLAG
+            setPadding(0, dp(8), 0, dp(8))
+            setOnClickListener { open(Legal.WEBSITE) }
+        })
+        col.addView(made)
+        val links = row()
+        links.addView(text("Mentions légales", 11f, c.muted, regular).apply {
+            paintFlags = paintFlags or Paint.UNDERLINE_TEXT_FLAG
+            setPadding(dp(8), dp(4), dp(8), dp(8))
+            setOnClickListener { a.startActivity(android.content.Intent(a, LegalActivity::class.java)) }
+        })
+        links.addView(text("·  v${UpdateChecker.currentVersion()}", 11f, c.muted, regular).apply {
+            setPadding(0, dp(4), 0, dp(8))
+        })
+        col.addView(links)
+        return col
+    }
+
+    fun open(url: String) {
+        runCatching {
+            a.startActivity(android.content.Intent(android.content.Intent.ACTION_VIEW, android.net.Uri.parse(url)))
+        }
     }
 
     /** Active / désactive une vue et tout son contenu (mode strict). */

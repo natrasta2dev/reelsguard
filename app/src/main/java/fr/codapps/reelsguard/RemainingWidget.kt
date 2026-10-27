@@ -1,4 +1,4 @@
-package com.perso.reelsguard
+package fr.codapps.reelsguard
 
 import android.app.PendingIntent
 import android.appwidget.AppWidgetManager

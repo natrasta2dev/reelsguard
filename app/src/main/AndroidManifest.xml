@@ -1,6 +1,9 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
 
+    <!-- Vérification des mises à jour (API publique GitHub) -->
+    <uses-permission android:name="android.permission.INTERNET" />
+    <!-- Notification du temps restant et des mises à jour -->
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
 
     <application
@@ -20,6 +23,10 @@
         <activity
             android:name=".SettingsActivity"
             android:windowSoftInputMode="adjustResize"
+            android:exported="false" />
+
+        <activity
+            android:name=".LegalActivity"
             android:exported="false" />
 
         <service
