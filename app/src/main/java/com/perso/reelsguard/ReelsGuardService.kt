@@ -222,6 +222,11 @@ class ReelsGuardService : AccessibilityService() {
     }
 
     private fun kickOut(rule: AppRule, root: AccessibilityNodeInfo, msg: String) {
+        if (rule.wholeApp) {
+            performGlobalAction(GLOBAL_ACTION_HOME)
+            toast(msg)
+            return
+        }
         if (rule.redirectTabLabels.isNotEmpty()) {
             val target = findBottomNode(root, rule.redirectTabLabels, rule.navTopToo)
             if (target != null && target.performAction(AccessibilityNodeInfo.ACTION_CLICK)) {
@@ -329,6 +334,7 @@ class ReelsGuardService : AccessibilityService() {
 
     /** Vrai si l'écran affiche des vidéos courtes pour cette app. */
     private fun isWatching(rule: AppRule, root: AccessibilityNodeInfo): Boolean {
+        if (rule.wholeApp) return true
         val pkg = root.packageName.toString()
         if (rule.viewerIds.any { id ->
                 root.findAccessibilityNodeInfosByViewId("$pkg:id/$id").any { it.isVisibleToUser }
@@ -372,7 +378,7 @@ class ReelsGuardService : AccessibilityService() {
         if (id != null && node.isVisibleToUser &&
             rule.viewerIdParts.any { it in id } &&
             rule.viewerIdExclusions.none { it in id } &&
-            node.bounds().height() > screenHeight * 0.5
+            node.bounds().height() > screenHeight * rule.fullscreenRatio
         ) return true
         for (i in 0 until node.childCount) {
             if (hasFullscreenViewer(rule, node.getChild(i), depth + 1)) return true
@@ -396,6 +402,7 @@ class ReelsGuardService : AccessibilityService() {
 
     /** Le bouton à cacher dans la barre du bas, s'il est à l'écran. */
     private fun findTab(rule: AppRule, root: AccessibilityNodeInfo): AccessibilityNodeInfo? {
+        if (rule.wholeApp) return null
         val pkg = root.packageName.toString()
         for (id in rule.tabIds) {
             root.findAccessibilityNodeInfosByViewId("$pkg:id/$id")

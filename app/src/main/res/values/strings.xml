@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name">ReelsGuard</string>
-    <string name="service_description">Compte ton temps passé sur les Reels Instagram, les Shorts YouTube, TikTok et les Reels Facebook (compteur commun), et cache ces sections une fois ta limite quotidienne atteinte.</string>
+    <string name="service_description">Compte ton temps passé sur les vidéos courtes et les réseaux choisis (Instagram, YouTube, TikTok, Facebook, Snapchat, X, Reddit, Pinterest, Twitch, Threads) et les cache une fois ta limite atteinte.</string>
     <string name="widget_description">Temps restant du jour</string>
 </resources>
