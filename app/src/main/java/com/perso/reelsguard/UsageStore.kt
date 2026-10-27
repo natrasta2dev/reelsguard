@@ -1,89 +1,168 @@
 package com.perso.reelsguard
 
 import android.content.Context
+import java.time.DayOfWeek
 import java.time.LocalDate
 
 /**
- * Stocke la limite quotidienne et le temps déjà consommé sur les Reels.
- * Le compteur repart à zéro automatiquement chaque jour (minuit, heure du téléphone).
+ * Temps passé et limites.
+ *  - Temps enregistré par jour, au total et par app (historique sur 30 jours).
+ *  - Limite « semaine » et limite « week-end » (week-end vide = même que la semaine).
+ *  - Quota propre à chaque app (0 = pas de quota propre), inclus dans la limite commune.
  *
- * Anti-triche simple : baisser la limite s'applique tout de suite,
- * l'augmenter ne prend effet que le lendemain.
+ * Anti-triche : baisser une limite s'applique tout de suite, l'augmenter seulement le lendemain.
  */
 class UsageStore(context: Context) {
 
     private val prefs = context.getSharedPreferences("reelsguard", Context.MODE_PRIVATE)
 
-    private fun today(): String = LocalDate.now().toString()
+    init {
+        if (!prefs.contains(KEY_INSTALL)) prefs.edit().putString(KEY_INSTALL, today().toString()).apply()
+        migrateV1()
+    }
 
-    /** Remet le compteur à zéro et applique une limite en attente si on a changé de jour. */
+    private fun today(): LocalDate = LocalDate.now()
+
+    private fun isWeekend(d: LocalDate) = d.dayOfWeek == DayOfWeek.SATURDAY || d.dayOfWeek == DayOfWeek.SUNDAY
+
+    /** Applique les hausses de limite en attente quand on change de jour, et purge l'historique. */
     private fun rolloverIfNeeded() {
-        val day = prefs.getString(KEY_DAY, null)
-        if (day != today()) {
-            val editor = prefs.edit()
-                .putString(KEY_DAY, today())
-                .putLong(KEY_USED_MS, 0L)
-            val pending = prefs.getInt(KEY_PENDING_LIMIT, -1)
-            if (pending >= 0) {
-                editor.putInt(KEY_LIMIT_MIN, pending).remove(KEY_PENDING_LIMIT)
-            }
-            editor.apply()
+        val t = today().toString()
+        if (prefs.getString(KEY_DAY, null) == t) return
+        val e = prefs.edit().putString(KEY_DAY, t)
+        for (k in listOf(KEY_WD, KEY_WE)) {
+            val pending = prefs.getInt("pending_$k", Int.MIN_VALUE)
+            if (pending != Int.MIN_VALUE) e.putInt(k, pending).remove("pending_$k")
         }
+        val oldest = today().minusDays(HISTORY_DAYS.toLong())
+        prefs.all.keys.filter { it.startsWith("u_") || it.startsWith("l_") }.forEach { key ->
+            val date = runCatching { LocalDate.parse(key.substring(2, 12)) }.getOrNull()
+            if (date != null && date.isBefore(oldest)) e.remove(key)
+        }
+        e.apply()
     }
 
-    /** Limite du jour en minutes (0 = Reels toujours bloqués). */
-    val limitMinutes: Int
-        get() {
-            rolloverIfNeeded()
-            return prefs.getInt(KEY_LIMIT_MIN, DEFAULT_LIMIT_MIN)
-        }
+    // ---------- limites ----------
 
-    /** Limite qui s'appliquera demain, ou -1 s'il n'y en a pas. */
-    val pendingLimitMinutes: Int
-        get() {
-            rolloverIfNeeded()
-            return prefs.getInt(KEY_PENDING_LIMIT, -1)
-        }
+    /** Limite en semaine (minutes). */
+    val weekdayLimit: Int get() { rolloverIfNeeded(); return prefs.getInt(KEY_WD, DEFAULT_LIMIT_MIN) }
 
-    val usedMs: Long
-        get() {
-            rolloverIfNeeded()
-            return prefs.getLong(KEY_USED_MS, 0L)
-        }
+    /** Limite du week-end, ou -1 si identique à la semaine. */
+    val weekendLimit: Int get() { rolloverIfNeeded(); return prefs.getInt(KEY_WE, -1) }
 
-    val remainingMs: Long
-        get() = (limitMinutes * 60_000L - usedMs).coerceAtLeast(0L)
-
-    val isLimitReached: Boolean
-        get() = remainingMs <= 0L
-
-    fun addUsage(deltaMs: Long) {
-        if (deltaMs <= 0) return
-        rolloverIfNeeded()
-        prefs.edit().putLong(KEY_USED_MS, usedMs + deltaMs).apply()
+    /** Hausse en attente pour demain, ou null. Pour le week-end, -1 = « comme la semaine ». */
+    fun pending(weekend: Boolean): Int? {
+        val k = "pending_" + if (weekend) KEY_WE else KEY_WD
+        return if (prefs.contains(k)) prefs.getInt(k, 0) else null
     }
+
+    fun limitFor(d: LocalDate): Int =
+        if (isWeekend(d) && weekendLimit >= 0) weekendLimit else weekdayLimit
+
+    val limitMinutes: Int get() = limitFor(today())
 
     /**
-     * Change la limite. Retourne true si elle s'applique tout de suite,
-     * false si elle est programmée pour demain (cas d'une augmentation).
+     * Change une limite (weekend = true pour le week-end ; -1 = « comme la semaine »).
+     * Retourne true si appliquée tout de suite, false si programmée pour demain.
      */
-    fun setLimit(minutes: Int): Boolean {
+    fun setLimit(minutes: Int, weekend: Boolean): Boolean {
         rolloverIfNeeded()
-        val m = minutes.coerceIn(0, 24 * 60)
-        return if (m <= limitMinutes) {
-            prefs.edit().putInt(KEY_LIMIT_MIN, m).remove(KEY_PENDING_LIMIT).apply()
-            true
+        val key = if (weekend) KEY_WE else KEY_WD
+        val m = if (weekend && minutes < 0) -1 else minutes.coerceIn(0, 24 * 60)
+        val current = if (weekend) weekendLimit else weekdayLimit
+        val effCurrent = if (weekend && current < 0) weekdayLimit else current
+        val effNew = if (weekend && m < 0) weekdayLimit else m
+        return if (effNew <= effCurrent) {
+            prefs.edit().putInt(key, m).remove("pending_$key").apply(); true
         } else {
-            prefs.edit().putInt(KEY_PENDING_LIMIT, m).apply()
-            false
+            prefs.edit().putInt("pending_$key", m).apply(); false
+        }
+    }
+
+    // ---------- quota par app ----------
+
+    fun appQuota(rule: AppRule): Int = prefs.getInt("q_${rule.name}", 0)
+
+    fun setAppQuota(rule: AppRule, minutes: Int) =
+        prefs.edit().putInt("q_${rule.name}", minutes.coerceIn(0, 24 * 60)).apply()
+
+    // ---------- temps utilisé ----------
+
+    private fun usedKey(d: LocalDate, rule: AppRule? = null) = "u_$d" + (rule?.let { "_${it.name}" } ?: "")
+
+    fun usedOn(d: LocalDate, rule: AppRule? = null): Long = prefs.getLong(usedKey(d, rule), 0L)
+
+    val usedMs: Long get() { rolloverIfNeeded(); return usedOn(today()) }
+
+    fun usedToday(rule: AppRule): Long = usedOn(today(), rule)
+
+    fun addUsage(rule: AppRule, deltaMs: Long) {
+        if (deltaMs <= 0) return
+        rolloverIfNeeded()
+        val d = today()
+        prefs.edit()
+            .putLong(usedKey(d), usedOn(d) + deltaMs)
+            .putLong(usedKey(d, rule), usedOn(d, rule) + deltaMs)
+            .putInt("l_$d", limitFor(d))
+            .apply()
+    }
+
+    /** Temps restant sur la limite commune. */
+    val remainingMs: Long get() = (limitMinutes * 60_000L - usedMs).coerceAtLeast(0L)
+
+    val isLimitReached: Boolean get() = remainingMs <= 0L
+
+    /** Temps restant pour une app : le plus petit entre la limite commune et son quota propre. */
+    fun remainingFor(rule: AppRule): Long {
+        val q = appQuota(rule)
+        if (q <= 0) return remainingMs
+        return minOf(remainingMs, (q * 60_000L - usedToday(rule)).coerceAtLeast(0L))
+    }
+
+    // ---------- historique et série ----------
+
+    data class Day(val date: LocalDate, val usedMs: Long, val limitMin: Int)
+
+    /** Les [n] derniers jours, du plus ancien à aujourd'hui. */
+    fun history(n: Int = 7): List<Day> = (n - 1 downTo 0).map { i ->
+        val d = today().minusDays(i.toLong())
+        Day(d, usedOn(d), prefs.getInt("l_$d", limitFor(d)))
+    }
+
+    /** Jours consécutifs, d'hier en remontant, passés sous la limite (depuis l'installation). */
+    fun streak(): Int {
+        val install = runCatching { LocalDate.parse(prefs.getString(KEY_INSTALL, null)) }.getOrNull() ?: today()
+        var d = today().minusDays(1)
+        var count = 0
+        while (!d.isBefore(install) && count < 365) {
+            val limit = prefs.getInt("l_$d", limitFor(d))
+            if (usedOn(d) >= limit * 60_000L) break
+            count++
+            d = d.minusDays(1)
+        }
+        return count
+    }
+
+    /** Reprend les réglages de la version précédente (limite unique, compteur du jour). */
+    private fun migrateV1() {
+        if (prefs.contains("limit_min") && !prefs.contains(KEY_WD)) {
+            prefs.edit().putInt(KEY_WD, prefs.getInt("limit_min", DEFAULT_LIMIT_MIN)).remove("limit_min").apply()
+        }
+        if (prefs.contains("used_ms")) {
+            val e = prefs.edit()
+            if (prefs.getString(KEY_DAY, null) == today().toString()) {
+                e.putLong(usedKey(today()), prefs.getLong("used_ms", 0L))
+            }
+            e.remove("used_ms").apply()
         }
     }
 
     companion object {
         private const val KEY_DAY = "day"
-        private const val KEY_USED_MS = "used_ms"
-        private const val KEY_LIMIT_MIN = "limit_min"
-        private const val KEY_PENDING_LIMIT = "pending_limit_min"
+        private const val KEY_INSTALL = "install"
+        private const val KEY_WD = "limit_wd"
+        private const val KEY_WE = "limit_we"
+        private const val HISTORY_DAYS = 30
         const val DEFAULT_LIMIT_MIN = 60
     }
 }
