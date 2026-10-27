@@ -17,7 +17,12 @@ import android.os.Handler
 import android.os.Looper
 import android.provider.Settings
 import android.view.Gravity
+import android.text.InputType
 import android.view.View
+import android.view.inputmethod.EditorInfo
+import android.view.inputmethod.InputMethodManager
+import android.widget.EditText
+import android.widget.ScrollView
 import android.widget.LinearLayout
 import android.widget.TextView
 import android.widget.Toast
@@ -32,9 +37,9 @@ class MainActivity : Activity() {
     private lateinit var bigCaption: TextView
     private lateinit var bar: ProgressLine
     private lateinit var usage: TextView
-    private lateinit var limitValue: TextView
+    private lateinit var limitInput: EditText
     private lateinit var pendingNote: TextView
-    private lateinit var enableButton: TextView
+    private lateinit var serviceButton: TextView
 
     private val handler = Handler(Looper.getMainLooper())
     private val ticker = object : Runnable {
@@ -55,56 +60,70 @@ class MainActivity : Activity() {
 
         val root = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            gravity = Gravity.CENTER_HORIZONTAL
-            setBackgroundColor(c.bg)
-            setPadding(dp(32), dp(56), dp(32), dp(40))
+            gravity = Gravity.CENTER
+            setPadding(dp(32), dp(48), dp(32), dp(48))
         }
 
         // Titre discret (appui long = diagnostic)
-        root.addView(text("REELSGUARD", 12f, c.muted, medium).apply {
+        root.addView(centered(text("REELSGUARD", 12f, c.muted, medium).apply {
             letterSpacing = 0.25f
             setOnLongClickListener { showDiagnostics(); true }
-        })
-
-        root.addView(View(this), LinearLayout.LayoutParams(0, 0, 1f))
+        }))
 
         bigNumber = text("", 96f, c.fg, light)
-        root.addView(bigNumber)
+        root.addView(centered(bigNumber, top = 40))
         bigCaption = text("", 15f, c.muted, regular)
-        root.addView(bigCaption)
+        root.addView(centered(bigCaption, top = 8))
 
         bar = ProgressLine(this, c)
-        root.addView(bar, LinearLayout.LayoutParams(dp(220), dp(6)).apply { topMargin = dp(36) })
+        root.addView(bar, LinearLayout.LayoutParams(dp(220), dp(6)).apply {
+            topMargin = dp(32); gravity = Gravity.CENTER_HORIZONTAL
+        })
 
-        usage = text("", 13f, c.muted, regular).apply { setPadding(0, dp(12), 0, 0) }
-        root.addView(usage)
+        usage = text("", 13f, c.muted, regular)
+        root.addView(centered(usage, top = 12))
 
-        root.addView(View(this), LinearLayout.LayoutParams(0, 0, 1f))
+        // Réglage de la limite : saisie en minutes + Enregistrer
+        root.addView(centered(text("Limite par jour (min)", 13f, c.muted, regular), top = 56))
 
-        // Réglage de la limite
-        root.addView(text("Limite par jour", 13f, c.muted, regular))
-        val stepper = LinearLayout(this).apply {
-            orientation = LinearLayout.HORIZONTAL
-            gravity = Gravity.CENTER_VERTICAL
-            setPadding(0, dp(12), 0, 0)
+        limitInput = EditText(this).apply {
+            inputType = InputType.TYPE_CLASS_NUMBER
+            imeOptions = EditorInfo.IME_ACTION_DONE
+            gravity = Gravity.CENTER
+            textSize = 28f
+            typeface = medium
+            setTextColor(c.fg)
+            setHintTextColor(c.muted)
+            hint = "60"
+            background = GradientDrawable().apply {
+                cornerRadius = dp(16).toFloat()
+                setStroke(dp(1), c.line)
+            }
+            setPadding(dp(16), dp(12), dp(16), dp(12))
+            setOnEditorActionListener { _, action, _ ->
+                if (action == EditorInfo.IME_ACTION_DONE) { saveLimit(); true } else false
+            }
         }
-        stepper.addView(roundButton("−") { step(-STEP) })
-        limitValue = text("", 22f, c.fg, medium).apply { minWidth = dp(120) }
-        stepper.addView(limitValue)
-        stepper.addView(roundButton("+") { step(+STEP) })
-        root.addView(stepper)
+        root.addView(limitInput, LinearLayout.LayoutParams(dp(160), -2).apply {
+            topMargin = dp(12); gravity = Gravity.CENTER_HORIZONTAL
+        })
 
-        pendingNote = text("", 12f, c.muted, regular).apply { setPadding(0, dp(10), 0, 0) }
-        root.addView(pendingNote)
+        root.addView(centered(pill("Enregistrer", filled = c.fg, textColor = c.bg) { saveLimit() }, top = 16))
 
-        enableButton = text("Activer le service", 15f, Color.WHITE, medium).apply {
-            background = GradientDrawable().apply { setColor(c.accent); cornerRadius = dp(28).toFloat() }
-            setPadding(dp(28), dp(16), dp(28), dp(16))
-            setOnClickListener { startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS)) }
+        pendingNote = text("", 12f, c.muted, regular)
+        root.addView(centered(pendingNote, top = 10))
+
+        serviceButton = pill("", filled = null, textColor = c.fg) {
+            startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS))
         }
-        root.addView(enableButton, LinearLayout.LayoutParams(-2, -2).apply { topMargin = dp(32) })
+        root.addView(centered(serviceButton, top = 40))
 
-        setContentView(root)
+        setContentView(ScrollView(this).apply {
+            isFillViewport = true
+            setBackgroundColor(c.bg)
+            addView(root, -1, -1)
+        })
+        limitInput.setText(targetLimit().toString())
     }
 
     override fun onResume() {
@@ -122,9 +141,17 @@ class MainActivity : Activity() {
     /** Valeur affichée : la limite de demain si une hausse est en attente, sinon celle du jour. */
     private fun targetLimit(): Int = store.pendingLimitMinutes.takeIf { it >= 0 } ?: store.limitMinutes
 
-    private fun step(delta: Int) {
-        val next = (targetLimit() + delta).coerceIn(0, MAX)
-        store.setLimit(next)
+    private fun saveLimit() {
+        val minutes = limitInput.text.toString().toIntOrNull()
+        if (minutes == null) {
+            Toast.makeText(this, "Entre un nombre de minutes", Toast.LENGTH_SHORT).show()
+            return
+        }
+        val now = store.setLimit(minutes)
+        Toast.makeText(this, if (now) "Enregistré" else "Appliquée demain", Toast.LENGTH_SHORT).show()
+        limitInput.clearFocus()
+        (getSystemService(INPUT_METHOD_SERVICE) as InputMethodManager)
+            .hideSoftInputFromWindow(limitInput.windowToken, 0)
         refresh()
     }
 
@@ -147,11 +174,17 @@ class MainActivity : Activity() {
         bar.progress = if (limit == 0) 1f else (used / (limit * 60_000f)).coerceIn(0f, 1f)
         usage.text = "${used / 60_000} / $limit min"
 
-        limitValue.text = "${targetLimit()} min"
         val pending = store.pendingLimitMinutes
-        pendingNote.text = if (pending >= 0) "Appliquée demain" else ""
+        pendingNote.text = if (pending >= 0) "$pending min à partir de demain" else ""
+        pendingNote.visibility = if (pending >= 0) View.VISIBLE else View.GONE
 
-        enableButton.visibility = if (isServiceEnabled()) View.GONE else View.VISIBLE
+        val on = isServiceEnabled()
+        serviceButton.text = if (on) "● Service actif" else "Activer le service"
+        serviceButton.setTextColor(if (on) c.muted else Color.WHITE)
+        (serviceButton.background as GradientDrawable).apply {
+            if (on) { setColor(Color.TRANSPARENT); setStroke(dp(1), c.line) }
+            else { setColor(c.accent); setStroke(0, Color.TRANSPARENT) }
+        }
     }
 
     private fun isServiceEnabled(): Boolean {
@@ -199,13 +232,22 @@ class MainActivity : Activity() {
         includeFontPadding = false
     }
 
-    private fun roundButton(label: String, onClick: () -> Unit) = text(label, 22f, c.fg, regular).apply {
-        background = GradientDrawable().apply {
-            shape = GradientDrawable.OVAL
-            setStroke(dp(1), c.line)
+    private fun pill(label: String, filled: Int?, textColor: Int, onClick: () -> Unit) =
+        text(label, 15f, textColor, medium).apply {
+            background = GradientDrawable().apply {
+                cornerRadius = dp(28).toFloat()
+                if (filled != null) setColor(filled) else setStroke(dp(1), c.line)
+            }
+            setPadding(dp(28), dp(14), dp(28), dp(14))
+            setOnClickListener { onClick() }
         }
-        layoutParams = LinearLayout.LayoutParams(dp(52), dp(52))
-        setOnClickListener { onClick() }
+
+    /** Ajoute la vue centrée horizontalement, avec une marge au-dessus. */
+    private fun centered(v: View, top: Int = 0): View = v.apply {
+        layoutParams = LinearLayout.LayoutParams(-2, -2).apply {
+            gravity = Gravity.CENTER_HORIZONTAL
+            topMargin = dp(top)
+        }
     }
 
     private fun dp(v: Int) = (v * resources.displayMetrics.density).toInt()
@@ -243,10 +285,5 @@ class MainActivity : Activity() {
                 }
             }
         }
-    }
-
-    companion object {
-        private const val STEP = 5
-        private const val MAX = 24 * 60
     }
 }
