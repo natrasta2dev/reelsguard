@@ -269,6 +269,7 @@ class MainActivity : Activity() {
     }
 
     companion object {
-        val APPS = listOf(AppRules.INSTAGRAM to "Instagram", AppRules.YOUTUBE to "YouTube", AppRules.TIKTOK to "TikTok")
+        val APPS = listOf(AppRules.INSTAGRAM to "Instagram", AppRules.YOUTUBE to "YouTube", AppRules.TIKTOK to "TikTok",
+            AppRules.FACEBOOK to "Facebook")
     }
 }
