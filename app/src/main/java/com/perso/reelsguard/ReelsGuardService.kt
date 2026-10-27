@@ -61,15 +61,21 @@ class ReelsGuardService : AccessibilityService() {
 
     override fun onInterrupt() = Unit
 
-    override fun onAccessibilityEvent(event: AccessibilityEvent?) {
-        if (event?.eventType != AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) return
-        val pkg = event.packageName?.toString() ?: return
-        // Clavier, barre de notifs et notre propre cache ne comptent pas comme « changer d'app ».
-        if (pkg in IGNORED_PACKAGES || pkg == packageName) return
+    // Tout se fait dans la boucle d'une seconde ; les événements ne servent qu'à réveiller le système.
+    override fun onAccessibilityEvent(event: AccessibilityEvent?) = Unit
 
-        val rule = AppRules.forPackage(pkg)
-        if (rule != currentRule) removeCover()
-        currentRule = rule
+    /** Racine de l'app réellement au premier plan (ignore clavier, barre système, notre cache). */
+    private fun foregroundRoot(): AccessibilityNodeInfo? {
+        rootInActiveWindow?.let { r ->
+            val pkg = r.packageName?.toString()
+            if (pkg != null && pkg !in IGNORED_PACKAGES && pkg != packageName) return r
+        }
+        return windows
+            .filter { it.type == android.view.accessibility.AccessibilityWindowInfo.TYPE_APPLICATION }
+            .sortedByDescending { it.isFocused || it.isActive }
+            .firstNotNullOfOrNull { w ->
+                w.root?.takeIf { AppRules.forPackage(it.packageName?.toString().orEmpty()) != null }
+            }
     }
 
     // ---------- boucle principale (1 fois par seconde) ----------
@@ -90,16 +96,17 @@ class ReelsGuardService : AccessibilityService() {
         val elapsed = now - lastTick
         lastTick = now
 
-        val rule = currentRule
-        val root = rootInActiveWindow
-        val active = rule != null && root != null && powerManager.isInteractive &&
-            root.packageName?.toString() in rule.packages
+        // On relit la fenêtre au premier plan à chaque passage plutôt que de se fier
+        // aux événements (YouTube en émet depuis d'autres paquets, ce qui faussait le suivi).
+        val root = if (powerManager.isInteractive) foregroundRoot() else null
+        val rule = root?.packageName?.toString()?.let { AppRules.forPackage(it) }
+        if (rule != currentRule) removeCover()
+        currentRule = rule
 
-        if (!active) {
+        if (root == null || rule == null) {
             removeCover()
             return
         }
-        rule!!; root!!
 
         val watching = isWatching(rule, root)
         reportDiagnostics(rule, root, watching, now)
@@ -160,11 +167,28 @@ class ReelsGuardService : AccessibilityService() {
                 }
             }) return true
 
+        if (rule.markerIdParts.isNotEmpty() && hasMarker(rule, root)) return true
+
         // Repli : un élément quasi plein écran dont l'identifiant évoque des vidéos courtes.
         if (rule.viewerIdParts.isNotEmpty() && hasFullscreenViewer(rule, root, 0)) return true
 
         // Dernier repli : l'onglet concerné de la barre du bas est sélectionné.
         return findTab(rule, root)?.isSelected == true
+    }
+
+    /** Parcours en largeur de l'arbre, sans filtre de visibilité (cf. Shorts-Blocker). */
+    private fun hasMarker(rule: AppRule, root: AccessibilityNodeInfo): Boolean {
+        val queue = ArrayDeque<AccessibilityNodeInfo>()
+        queue.add(root)
+        var scanned = 0
+        while (queue.isNotEmpty() && scanned < 1500) {
+            val n = queue.removeFirst()
+            scanned++
+            val id = n.viewIdResourceName?.lowercase()
+            if (id != null && rule.markerIdParts.any { it in id }) return true
+            for (i in 0 until n.childCount) n.getChild(i)?.let(queue::add)
+        }
+        return false
     }
 
     private fun hasFullscreenViewer(rule: AppRule, node: AccessibilityNodeInfo?, depth: Int): Boolean {

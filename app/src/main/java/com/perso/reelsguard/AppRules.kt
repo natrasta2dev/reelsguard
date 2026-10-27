@@ -23,6 +23,12 @@ data class AppRule(
      * (ex. « reel » chez YouTube) signale un lecteur de vidéos courtes.
      */
     val viewerIdParts: List<String> = emptyList(),
+    /**
+     * Marqueurs fiables : si un élément dont l'identifiant contient l'un de ces morceaux existe
+     * dans l'arbre (même non « visible »), on est sur des vidéos courtes.
+     * Méthode reprise du projet open source Shorts-Blocker (reel_progress_bar chez YouTube).
+     */
+    val markerIdParts: List<String> = emptyList(),
     /** Morceaux d'identifiants à ignorer (ex. l'étagère de Shorts sur l'accueil YouTube). */
     val viewerIdExclusions: List<String> = emptyList(),
     /** Si non vide : une fois bloqué, on bascule vers cet onglet au lieu de faire « retour ». */
@@ -58,6 +64,7 @@ object AppRules {
             "reel_player_overlay_v2",
             "reel_time_bar",
         ),
+        markerIdParts = listOf("reel_progress_bar"),
         viewerIdParts = listOf("reel", "shorts"),
         viewerIdExclusions = listOf("shelf", "pivot", "tab", "thumbnail", "chip"),
     )
