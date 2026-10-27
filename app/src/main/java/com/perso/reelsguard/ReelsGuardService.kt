@@ -223,7 +223,7 @@ class ReelsGuardService : AccessibilityService() {
 
     private fun kickOut(rule: AppRule, root: AccessibilityNodeInfo, msg: String) {
         if (rule.redirectTabLabels.isNotEmpty()) {
-            val target = findBottomNode(root, rule.redirectTabLabels)
+            val target = findBottomNode(root, rule.redirectTabLabels, rule.navTopToo)
             if (target != null && target.performAction(AccessibilityNodeInfo.ACTION_CLICK)) {
                 toast(msg)
                 return
@@ -338,7 +338,7 @@ class ReelsGuardService : AccessibilityService() {
         if (rule.viewerTexts.any { label ->
                 root.findAccessibilityNodeInfosByText(label).any { node ->
                     node.isVisibleToUser && node.label().equals(label, ignoreCase = true) &&
-                        node.bounds().top < screenHeight * 0.3
+                        node.bounds().top < screenHeight * rule.viewerTextMaxTop
                 }
             }) return true
 
@@ -402,17 +402,26 @@ class ReelsGuardService : AccessibilityService() {
                 .firstOrNull { it.isVisibleToUser }
                 ?.let { return it }
         }
-        return findBottomNode(root, rule.tabLabels)
+        return findBottomNode(root, rule.tabLabels, rule.navTopToo)
     }
 
-    /** Élément cliquable de la barre du bas dont le libellé commence par l'un des [labels]. */
-    private fun findBottomNode(root: AccessibilityNodeInfo, labels: List<String>): AccessibilityNodeInfo? {
+    /**
+     * Élément cliquable de la barre d'onglets dont le libellé commence par l'un des [labels].
+     * Barre du bas uniquement, ou aussi barre du haut si [allowTop].
+     */
+    private fun findBottomNode(
+        root: AccessibilityNodeInfo,
+        labels: List<String>,
+        allowTop: Boolean = false,
+    ): AccessibilityNodeInfo? {
         for (label in labels) {
             for (node in root.findAccessibilityNodeInfosByText(label)) {
                 if (!node.isVisibleToUser) continue
                 if (!node.label().startsWith(label, ignoreCase = true)) continue
                 val clickable = node.clickableSelfOrParent() ?: continue
-                if (clickable.bounds().top > screenHeight * 0.8) return clickable
+                val top = clickable.bounds().top
+                if (top > screenHeight * 0.8) return clickable
+                if (allowTop && top < screenHeight * 0.25 && clickable.bounds().height() < screenHeight * 0.12) return clickable
             }
         }
         return null

@@ -18,6 +18,10 @@ data class AppRule(
     val viewerIds: List<String>,
     /** Textes présents seulement sur le fil de vidéos (ex. « Pour toi » sur TikTok). */
     val viewerTexts: List<String> = emptyList(),
+    /** Hauteur max (fraction de l'écran) où chercher ces textes. */
+    val viewerTextMaxTop: Float = 0.3f,
+    /** Vrai si la barre d'onglets peut aussi être en haut de l'écran (Facebook). */
+    val navTopToo: Boolean = false,
     /**
      * Repli : un élément plein écran dont l'identifiant contient l'un de ces morceaux
      * (ex. « reel » chez YouTube) signale un lecteur de vidéos courtes.
@@ -79,7 +83,22 @@ object AppRules {
         redirectTabLabels = listOf("Profil", "Profile"),
     )
 
-    val ALL = listOf(INSTAGRAM, YOUTUBE, TIKTOK)
+    /**
+     * Facebook (app classique, pas Lite) : peu d'identifiants exploitables, on se base sur
+     * l'onglet Reels/Vidéo (en haut ou en bas selon les versions) et l'en-tête « Reels » du lecteur.
+     */
+    val FACEBOOK = AppRule(
+        name = "Facebook",
+        packages = setOf("com.facebook.katana"),
+        tabIds = emptyList(),
+        tabLabels = listOf("Reels", "Vidéo", "Video"),
+        viewerIds = emptyList(),
+        viewerTexts = listOf("Reels"),
+        viewerTextMaxTop = 0.15f,
+        navTopToo = true,
+    )
+
+    val ALL = listOf(INSTAGRAM, YOUTUBE, TIKTOK, FACEBOOK)
 
     fun forPackage(pkg: String): AppRule? = ALL.firstOrNull { pkg in it.packages }
 }
