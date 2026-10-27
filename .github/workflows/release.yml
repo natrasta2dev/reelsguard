@@ -1,4 +1,5 @@
-# Publie une release signée quand un tag de version est poussé (ex. v1.0.0).
+# Compile, signe et joint l'APK à une release dès qu'elle est publiée sur GitHub
+# (Releases → Draft a new release → tag vX.Y.Z → Publish release).
 #
 # Secrets requis (Settings → Secrets and variables → Actions) :
 #   RG_KEYSTORE_B64       keystore de signature encodé en base64
@@ -7,8 +8,8 @@
 name: Release
 
 on:
-  push:
-    tags: ["v*.*.*"]
+  release:
+    types: [published]
 
 permissions:
   contents: write
@@ -18,11 +19,14 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
+        with:
+          ref: ${{ github.event.release.tag_name }}
 
       - name: Vérifier que le tag correspond à versionName
         shell: bash
         run: |
-          TAG="${GITHUB_REF_NAME#v}"
+          TAG="${{ github.event.release.tag_name }}"
+          TAG="${TAG#v}"
           VERSION=$(grep -oP 'versionName = "\K[^"]+' app/build.gradle.kts)
           echo "Tag : $TAG · versionName : $VERSION"
           if [ "$TAG" != "$VERSION" ]; then
@@ -92,6 +96,7 @@ jobs:
 
       - uses: softprops/action-gh-release@v2
         with:
+          tag_name: ${{ github.event.release.tag_name }}
           name: ReelsGuard v${{ env.VERSION }}
           body_path: notes.md
           files: |

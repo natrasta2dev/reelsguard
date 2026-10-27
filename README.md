@@ -107,8 +107,8 @@ La version debug s'installe à côté de la version officielle (identifiant `fr.
 ### Publier une version (mainteneurs)
 
 1. Mettre à jour `versionCode` et `versionName` dans `app/build.gradle.kts`, et `CHANGELOG.md`.
-2. Pousser un tag identique : `git tag v1.1.0 && git push origin v1.1.0`.
-3. Le workflow *Release* compile, signe et publie l'APK. Il utilise les secrets `RG_KEYSTORE_B64`, `RG_KEYSTORE_PASSWORD` et `RG_KEY_ALIAS` ; la clé de signature n'est jamais dans le dépôt.
+2. Sur GitHub : *Releases* → *Draft a new release* → créer le tag identique (ex. `v1.1.0`) sur `main` → *Publish release*.
+3. Le workflow *Release* compile, signe et joint l'APK à la release, avec les notes du CHANGELOG. Il utilise les secrets `RG_KEYSTORE_B64`, `RG_KEYSTORE_PASSWORD` et `RG_KEY_ALIAS` ; la clé de signature n'est jamais dans le dépôt.
 
 ## Contribuer
 
