@@ -42,7 +42,7 @@ class MainActivity : Activity() {
         remaining = TextView(this).apply { textSize = 22f; setPadding(0, pad, 0, pad) }
         root.addView(remaining)
 
-        root.addView(TextView(this).apply { text = "Limite quotidienne (minutes, 0 = Reels toujours bloqués)" })
+        root.addView(TextView(this).apply { text = "Limite quotidienne commune Reels + Shorts + TikTok (minutes, 0 = toujours bloqué)" })
 
         limitInput = EditText(this).apply {
             inputType = InputType.TYPE_CLASS_NUMBER
@@ -96,7 +96,7 @@ class MainActivity : Activity() {
         val left = store.remainingMs
         val usedMin = store.usedMs / 60_000
         remaining.text = if (left <= 0) {
-            "Reels bloqués jusqu'à demain\n(utilisé : $usedMin min)"
+            "Vidéos courtes bloquées jusqu'à demain\n(utilisé : $usedMin min)"
         } else {
             "Restant aujourd'hui : ${left / 60_000} min ${(left / 1000) % 60} s\n" +
                 "Utilisé : $usedMin / ${store.limitMinutes} min"

@@ -18,12 +18,11 @@ import android.view.accessibility.AccessibilityNodeInfo
 import android.widget.Toast
 
 /**
- * Surcouche au-dessus d'Instagram :
- *  - compte le temps passé à regarder des Reels (onglet Reels ou Reel ouvert depuis le fil / les DM) ;
- *  - une fois la limite du jour atteinte, recouvre le bouton Reels de la barre du bas
- *    (il disparaît et ne réagit plus) et fait « retour » si un Reel s'ouvre quand même.
- *
- * Instagram n'est jamais modifiée : tout passe par l'API d'accessibilité d'Android.
+ * Surcouche au-dessus d'Instagram, YouTube et TikTok (aucune de ces apps n'est modifiée) :
+ *  - compte le temps passé sur les vidéos courtes (Reels, Shorts, fil TikTok) dans UN compteur commun ;
+ *  - limite atteinte : le bouton correspondant est recouvert (il disparaît et ne réagit plus) ;
+ *  - si on se retrouve quand même sur des vidéos courtes : « retour » (Instagram, YouTube)
+ *    ou bascule directe vers l'onglet Profil (TikTok).
  */
 class ReelsGuardService : AccessibilityService() {
 
@@ -32,13 +31,16 @@ class ReelsGuardService : AccessibilityService() {
     private lateinit var powerManager: PowerManager
     private val handler = Handler(Looper.getMainLooper())
 
-    private var instagramInFront = false
+    /** App surveillée actuellement au premier plan, ou null. */
+    private var currentRule: AppRule? = null
     private var lastTick = 0L
     private var lastKickOut = 0L
     private var warnedFiveMin = false
 
     private var tabCover: View? = null
     private val coverBounds = Rect()
+
+    private val screenHeight get() = resources.displayMetrics.heightPixels
 
     // ---------- cycle de vie ----------
 
@@ -62,15 +64,12 @@ class ReelsGuardService : AccessibilityService() {
     override fun onAccessibilityEvent(event: AccessibilityEvent?) {
         if (event?.eventType != AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) return
         val pkg = event.packageName?.toString() ?: return
-        when {
-            pkg == INSTAGRAM -> instagramInFront = true
-            // Clavier, barre de notifs et notre propre overlay ne comptent pas comme « quitter Instagram ».
-            pkg in IGNORED_PACKAGES || pkg == packageName -> Unit
-            else -> {
-                instagramInFront = false
-                removeCover()
-            }
-        }
+        // Clavier, barre de notifs et notre propre cache ne comptent pas comme « changer d'app ».
+        if (pkg in IGNORED_PACKAGES || pkg == packageName) return
+
+        val rule = AppRules.forPackage(pkg)
+        if (rule != currentRule) removeCover()
+        currentRule = rule
     }
 
     // ---------- boucle principale (1 fois par seconde) ----------
@@ -80,7 +79,7 @@ class ReelsGuardService : AccessibilityService() {
             try {
                 tick()
             } catch (_: Exception) {
-                // Instagram peut changer son interface : on ne plante jamais le service pour ça.
+                // Une app peut changer son interface : on ne plante jamais le service pour ça.
             }
             handler.postDelayed(this, TICK_MS)
         }
@@ -91,81 +90,126 @@ class ReelsGuardService : AccessibilityService() {
         val elapsed = now - lastTick
         lastTick = now
 
+        val rule = currentRule
         val root = rootInActiveWindow
-        val onInstagram = instagramInFront &&
-            powerManager.isInteractive &&
-            root?.packageName?.toString() == INSTAGRAM
+        val active = rule != null && root != null && powerManager.isInteractive &&
+            root.packageName?.toString() in rule.packages
 
-        if (!onInstagram || root == null) {
+        if (!active) {
             removeCover()
             return
         }
+        rule!!; root!!
 
-        val watchingReels = isWatchingReels(root)
+        val watching = isWatching(rule, root)
 
-        // 1) Comptage du temps (on plafonne pour ignorer les trous si le téléphone a dormi).
-        if (watchingReels && !store.isLimitReached) {
+        // 1) Comptage (plafonné pour ignorer les trous si le téléphone a dormi).
+        if (watching && !store.isLimitReached) {
             store.addUsage(elapsed.coerceAtMost(TICK_MS * 3))
             maybeWarn()
         }
 
-        // 2) Limite atteinte : on cache le bouton et on éjecte des Reels.
+        // 2) Limite atteinte : bouton caché + sortie des vidéos courtes.
         if (store.isLimitReached) {
-            updateCover(findReelsTab(root))
-            if (watchingReels && now - lastKickOut > KICK_COOLDOWN_MS) {
+            updateCover(findTab(rule, root))
+            if (watching && now - lastKickOut > KICK_COOLDOWN_MS) {
                 lastKickOut = now
-                performGlobalAction(GLOBAL_ACTION_BACK)
-                toast("Temps Reels écoulé pour aujourd'hui 🙂")
+                kickOut(rule, root)
             }
         } else {
             removeCover()
         }
     }
 
+    private fun kickOut(rule: AppRule, root: AccessibilityNodeInfo) {
+        if (rule.redirectTabLabels.isNotEmpty()) {
+            val target = findBottomNode(root, rule.redirectTabLabels)
+            if (target != null && target.performAction(AccessibilityNodeInfo.ACTION_CLICK)) {
+                toast("Temps écoulé pour aujourd'hui, direction ton profil 🙂")
+                return
+            }
+        }
+        performGlobalAction(GLOBAL_ACTION_BACK)
+        toast("Temps ${rule.name} écoulé pour aujourd'hui 🙂")
+    }
+
     private fun maybeWarn() {
         val remaining = store.remainingMs
         if (!warnedFiveMin && remaining in 1..5 * 60_000L && store.limitMinutes > 5) {
             warnedFiveMin = true
-            toast("Plus que 5 min de Reels aujourd'hui")
+            toast("Plus que 5 min de vidéos courtes aujourd'hui")
         }
         if (remaining > 5 * 60_000L) warnedFiveMin = false
     }
 
-    // ---------- détection dans l'interface d'Instagram ----------
+    // ---------- détection dans l'interface des apps ----------
 
-    /** Vrai si un lecteur de Reels est affiché (onglet Reels ou Reel ouvert ailleurs). */
-    private fun isWatchingReels(root: AccessibilityNodeInfo): Boolean {
-        if (REELS_VIEWER_IDS.any { root.hasVisibleId(it) }) return true
-        // Repli : l'onglet Reels de la barre du bas est sélectionné.
-        return findReelsTab(root)?.isSelected == true
+    /** Vrai si l'écran affiche des vidéos courtes pour cette app. */
+    private fun isWatching(rule: AppRule, root: AccessibilityNodeInfo): Boolean {
+        val pkg = root.packageName.toString()
+        if (rule.viewerIds.any { id ->
+                root.findAccessibilityNodeInfosByViewId("$pkg:id/$id").any { it.isVisibleToUser }
+            }) return true
+
+        // Textes propres au fil de vidéos, cherchés dans le haut de l'écran.
+        if (rule.viewerTexts.any { label ->
+                root.findAccessibilityNodeInfosByText(label).any { node ->
+                    node.isVisibleToUser && node.label().equals(label, ignoreCase = true) &&
+                        node.bounds().top < screenHeight * 0.3
+                }
+            }) return true
+
+        // Repli : l'onglet concerné de la barre du bas est sélectionné.
+        return findTab(rule, root)?.isSelected == true
     }
 
-    /** Le bouton Reels de la barre de navigation du bas, s'il est à l'écran. */
-    private fun findReelsTab(root: AccessibilityNodeInfo): AccessibilityNodeInfo? {
-        for (id in REELS_TAB_IDS) {
-            root.findAccessibilityNodeInfosByViewId("$INSTAGRAM:id/$id")
+    /** Le bouton à cacher dans la barre du bas, s'il est à l'écran. */
+    private fun findTab(rule: AppRule, root: AccessibilityNodeInfo): AccessibilityNodeInfo? {
+        val pkg = root.packageName.toString()
+        for (id in rule.tabIds) {
+            root.findAccessibilityNodeInfosByViewId("$pkg:id/$id")
                 .firstOrNull { it.isVisibleToUser }
                 ?.let { return it }
         }
-        // Repli si l'identifiant change : un élément cliquable nommé « Reels » dans le bas de l'écran.
-        val screenH = resources.displayMetrics.heightPixels
-        return root.findAccessibilityNodeInfosByText("Reels").firstOrNull { node ->
-            val r = Rect().also { node.getBoundsInScreen(it) }
-            node.isVisibleToUser && node.isClickable && r.top > screenH * 0.8
-        }
+        return findBottomNode(root, rule.tabLabels)
     }
 
-    private fun AccessibilityNodeInfo.hasVisibleId(id: String): Boolean =
-        findAccessibilityNodeInfosByViewId("$INSTAGRAM:id/$id").any { it.isVisibleToUser }
+    /** Élément cliquable de la barre du bas dont le libellé commence par l'un des [labels]. */
+    private fun findBottomNode(root: AccessibilityNodeInfo, labels: List<String>): AccessibilityNodeInfo? {
+        for (label in labels) {
+            for (node in root.findAccessibilityNodeInfosByText(label)) {
+                if (!node.isVisibleToUser) continue
+                if (!node.label().startsWith(label, ignoreCase = true)) continue
+                val clickable = node.clickableSelfOrParent() ?: continue
+                if (clickable.bounds().top > screenHeight * 0.8) return clickable
+            }
+        }
+        return null
+    }
 
-    // ---------- cache par-dessus le bouton Reels ----------
+    private fun AccessibilityNodeInfo.label(): String =
+        (text ?: contentDescription)?.toString()?.trim().orEmpty()
+
+    private fun AccessibilityNodeInfo.bounds(): Rect = Rect().also { getBoundsInScreen(it) }
+
+    private fun AccessibilityNodeInfo.clickableSelfOrParent(): AccessibilityNodeInfo? {
+        var n: AccessibilityNodeInfo? = this
+        repeat(4) {
+            if (n == null) return null
+            if (n!!.isClickable) return n
+            n = n!!.parent
+        }
+        return null
+    }
+
+    // ---------- cache par-dessus le bouton ----------
 
     private fun updateCover(tab: AccessibilityNodeInfo?) {
         if (tab == null) {
             removeCover()
             return
         }
-        val bounds = Rect().also { tab.getBoundsInScreen(it) }
+        val bounds = tab.bounds()
         if (bounds.isEmpty) {
             removeCover()
             return
@@ -192,11 +236,11 @@ class ReelsGuardService : AccessibilityService() {
             windowManager.updateViewLayout(existing, params)
         } else {
             val view = View(this).apply {
-                // Même couleur que la barre d'Instagram (qui suit le thème du téléphone) :
+                // Couleur de la barre (les apps suivent le thème du téléphone) :
                 // le bouton disparaît visuellement, et le cache absorbe les appuis.
                 background = GradientDrawable().apply { setColor(barColor()) }
                 isClickable = true
-                setOnClickListener { toast("Reels bloqués jusqu'à demain") }
+                setOnClickListener { toast("Bloqué jusqu'à demain") }
             }
             windowManager.addView(view, params)
             tabCover = view
@@ -217,18 +261,8 @@ class ReelsGuardService : AccessibilityService() {
     private fun toast(msg: String) = Toast.makeText(this, msg, Toast.LENGTH_SHORT).show()
 
     companion object {
-        private const val INSTAGRAM = "com.instagram.android"
         private const val TICK_MS = 1_000L
         private const val KICK_COOLDOWN_MS = 1_500L
-
-        /** Identifiants internes d'Instagram (peuvent évoluer avec les mises à jour). */
-        private val REELS_TAB_IDS = listOf("clips_tab")
-        private val REELS_VIEWER_IDS = listOf(
-            "clips_viewer_view_pager",
-            "clips_viewer_container",
-            "clips_video_container",
-            "clips_single_media_component",
-        )
 
         private val IGNORED_PACKAGES = setOf(
             "com.android.systemui",
