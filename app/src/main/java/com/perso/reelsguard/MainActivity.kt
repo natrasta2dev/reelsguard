@@ -2,6 +2,7 @@ package com.perso.reelsguard
 
 import android.app.Activity
 import android.app.AlertDialog
+import android.app.TimePickerDialog
 import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
@@ -31,6 +32,7 @@ import android.widget.Toast
 class MainActivity : Activity() {
 
     private lateinit var store: UsageStore
+    private lateinit var schedule: Schedule
     private lateinit var c: Palette
 
     private lateinit var bigNumber: TextView
@@ -43,6 +45,11 @@ class MainActivity : Activity() {
     private lateinit var guide: LinearLayout
     private lateinit var guideToggle: TextView
     private var guideOpen = false
+    private val appChips = mutableListOf<Pair<AppRule, TextView>>()
+    private val dayChips = mutableListOf<Pair<Int, TextView>>()
+    private lateinit var startChip: TextView
+    private lateinit var endChip: TextView
+    private lateinit var allDayLink: TextView
 
     private val handler = Handler(Looper.getMainLooper())
     private val ticker = object : Runnable {
@@ -55,6 +62,7 @@ class MainActivity : Activity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         store = UsageStore(this)
+        schedule = Schedule(this)
         c = Palette.of(this)
         window.statusBarColor = c.bg
         window.navigationBarColor = c.bg
@@ -64,7 +72,7 @@ class MainActivity : Activity() {
         val root = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             gravity = Gravity.CENTER
-            setPadding(dp(32), dp(48), dp(32), dp(48))
+            setPadding(dp(24), dp(48), dp(24), dp(48))
         }
 
         // Titre discret (appui long = diagnostic)
@@ -115,6 +123,45 @@ class MainActivity : Activity() {
 
         pendingNote = text("", 12f, c.muted, regular)
         root.addView(centered(pendingNote, top = 10))
+
+        // Apps surveillées
+        root.addView(centered(text("Apps", 13f, c.muted, regular), top = 44))
+        val appsRow = row()
+        listOf(AppRules.INSTAGRAM to "Instagram", AppRules.YOUTUBE to "YouTube", AppRules.TIKTOK to "TikTok")
+            .forEachIndexed { i, (rule, label) ->
+                val chip = chip(label) { schedule.setAppEnabled(rule, !schedule.isAppEnabled(rule)); refresh() }
+                appsRow.addView(chip, LinearLayout.LayoutParams(-2, -2).apply { if (i > 0) leftMargin = dp(8) })
+                appChips += rule to chip
+            }
+        root.addView(centered(appsRow, top = 12))
+
+        // Jours actifs
+        root.addView(centered(text("Jours actifs", 13f, c.muted, regular), top = 32))
+        val daysRow = row()
+        listOf("L", "M", "M", "J", "V", "S", "D").forEachIndexed { i, letter ->
+            val chip = chip(letter, round = true) { schedule.toggleDay(i + 1); refresh() }
+            daysRow.addView(chip, LinearLayout.LayoutParams(dp(36), dp(36)).apply { if (i > 0) leftMargin = dp(6) })
+            dayChips += (i + 1) to chip
+        }
+        root.addView(centered(daysRow, top = 12))
+
+        // Plage horaire
+        root.addView(centered(text("Plage horaire", 13f, c.muted, regular), top = 32))
+        val timeRow = row()
+        startChip = chip("") { pickTime(true) }
+        endChip = chip("") { pickTime(false) }
+        timeRow.addView(startChip)
+        timeRow.addView(text("→", 15f, c.muted, regular), LinearLayout.LayoutParams(-2, -2).apply {
+            leftMargin = dp(12); rightMargin = dp(12)
+        })
+        timeRow.addView(endChip)
+        root.addView(centered(timeRow, top = 12))
+        allDayLink = text("Toute la journée", 12f, c.muted, regular).apply {
+            paintFlags = paintFlags or android.graphics.Paint.UNDERLINE_TEXT_FLAG
+            setPadding(dp(12), dp(10), dp(12), dp(10))
+            setOnClickListener { schedule.setWindow(0, 0); refresh() }
+        }
+        root.addView(centered(allDayLink, top = 4))
 
         serviceButton = pill("", filled = null, textColor = c.fg) {
             startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS))
@@ -169,12 +216,45 @@ class MainActivity : Activity() {
         refresh()
     }
 
+    private fun pickTime(start: Boolean) {
+        val current = if (start) schedule.startMin else schedule.endMin
+        val initial = if (schedule.isAllDay) (if (start) 8 * 60 else 16 * 60) else current
+        TimePickerDialog(this, { _, h, m ->
+            val v = h * 60 + m
+            if (schedule.isAllDay) {
+                // Première saisie : on part d'une plage 08:00 → 16:00
+                if (start) schedule.setWindow(v, 16 * 60) else schedule.setWindow(8 * 60, v)
+            } else {
+                if (start) schedule.setWindow(v, schedule.endMin) else schedule.setWindow(schedule.startMin, v)
+            }
+            refresh()
+        }, initial / 60, initial % 60, true).show()
+    }
+
     private fun refresh() {
         val limit = store.limitMinutes
         val used = store.usedMs
         val left = store.remainingMs
 
-        if (left <= 0) {
+        // Sélecteurs
+        appChips.forEach { (rule, chip) -> styleChip(chip, schedule.isAppEnabled(rule)) }
+        val days = schedule.activeDays
+        dayChips.forEach { (d, chip) -> styleChip(chip, d in days) }
+        startChip.text = if (schedule.isAllDay) "00:00" else Schedule.fmt(schedule.startMin)
+        endChip.text = if (schedule.isAllDay) "24:00" else Schedule.fmt(schedule.endMin)
+        styleChip(startChip, !schedule.isAllDay)
+        styleChip(endChip, !schedule.isAllDay)
+        allDayLink.visibility = if (schedule.isAllDay) View.INVISIBLE else View.VISIBLE
+
+        if (!schedule.isActiveToday()) {
+            bigNumber.text = "∞"
+            bigNumber.setTextColor(c.fg)
+            bigCaption.text = "pas de limite aujourd'hui"
+        } else if (!schedule.isInWindow() && left > 0) {
+            bigNumber.text = "${left / 60_000}"
+            bigNumber.setTextColor(c.muted)
+            bigCaption.text = "dispo de ${Schedule.fmt(schedule.startMin)} à ${Schedule.fmt(schedule.endMin)}"
+        } else if (left <= 0) {
             bigNumber.text = "0"
             bigNumber.setTextColor(c.accent)
             bigCaption.text = "à demain"
@@ -228,8 +308,10 @@ class MainActivity : Activity() {
             Triple("Batterie non restreinte",
                 "Infos de l'appli → Batterie → Non restreinte, sinon le téléphone peut endormir ReelsGuard.", appSettings),
             Triple("Régler ta limite",
-                "Tape le nombre de minutes par jour puis Enregistrer. Le compteur est commun à " +
-                    "Reels, Shorts et TikTok et repart à zéro à minuit.", null),
+                "Tape le nombre de minutes par jour puis Enregistrer. Le compteur est commun aux " +
+                    "apps choisies et repart à zéro à minuit.", null),
+            Triple("Choisir apps, jours et horaires",
+                "Les jours non cochés sont libres. En dehors de la plage horaire, les vidéos courtes sont cachées.", null),
         )
         steps.forEachIndexed { i, (title, body, action) ->
             box.addView(guideStep(i + 1, title, body, action))
@@ -303,6 +385,29 @@ class MainActivity : Activity() {
         typeface = face
         gravity = Gravity.CENTER
         includeFontPadding = false
+    }
+
+    private fun row() = LinearLayout(this).apply {
+        orientation = LinearLayout.HORIZONTAL
+        gravity = Gravity.CENTER
+    }
+
+    /** Puce sélectionnable : pleine quand active, contour quand inactive. */
+    private fun chip(label: String, round: Boolean = false, onClick: () -> Unit) =
+        text(label, 14f, c.fg, medium).apply {
+            background = GradientDrawable().apply {
+                if (round) shape = GradientDrawable.OVAL else cornerRadius = dp(20).toFloat()
+            }
+            if (!round) setPadding(dp(16), dp(10), dp(16), dp(10))
+            setOnClickListener { onClick() }
+        }
+
+    private fun styleChip(chip: TextView, on: Boolean) {
+        (chip.background as GradientDrawable).apply {
+            if (on) { setColor(c.fg); setStroke(0, Color.TRANSPARENT) }
+            else { setColor(Color.TRANSPARENT); setStroke(dp(1), c.line) }
+        }
+        chip.setTextColor(if (on) c.bg else c.muted)
     }
 
     private fun pill(label: String, filled: Int?, textColor: Int, onClick: () -> Unit) =
