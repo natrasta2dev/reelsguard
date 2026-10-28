@@ -1,15 +1,20 @@
 package fr.codapps.reelsguard
 
 import android.app.Activity
+import android.app.AlertDialog
 import android.app.TimePickerDialog
 import android.os.Bundle
+import android.text.Editable
+import android.text.TextWatcher
 import android.os.Handler
 import android.os.Looper
 import android.view.Gravity
 import android.view.View
 import android.view.inputmethod.InputMethodManager
 import android.widget.EditText
+import android.widget.FrameLayout
 import android.widget.LinearLayout
+import android.widget.ScrollView
 import android.widget.TextView
 import android.widget.Toast
 import java.text.SimpleDateFormat
@@ -17,7 +22,8 @@ import java.util.Date
 import java.util.Locale
 
 /**
- * Tous les réglages. Les puces s'appliquent tout de suite ; les nombres avec « Enregistrer ».
+ * Tous les réglages. Les puces s'appliquent tout de suite ; les nombres avec le bouton
+ * « Enregistrer », fixé en bas de l'écran et visible seulement quand un nombre a été modifié.
  * En mode strict, tout est verrouillé jusqu'à un déverrouillage (2 min d'attente, 5 min ouvert).
  */
 class SettingsActivity : Activity() {
@@ -46,6 +52,10 @@ class SettingsActivity : Activity() {
     private lateinit var strictChip: TextView
 
     private var wasLocked: Boolean? = null
+    private lateinit var saveButton: TextView
+    /** Valeurs des champs au dernier chargement, pour savoir si quelque chose a changé. */
+    private var snapshot: List<String> = emptyList()
+    private val fields get() = listOf(weekdayField, weekendField, pauseAfterField, pauseLenField, delayField) + quotaFields.map { it.second }
 
     private val handler = Handler(Looper.getMainLooper())
     private val ticker = object : Runnable {
@@ -66,7 +76,7 @@ class SettingsActivity : Activity() {
 
         // En-tête
         root.addView(ui.centered(ui.text("RÉGLAGES", 12f, c.muted, ui.medium).apply { letterSpacing = 0.25f }))
-        root.addView(ui.centered(ui.link("‹ Retour") { finish() }, top = 4))
+        root.addView(ui.centered(ui.link("‹ Retour") { leave() }, top = 4))
 
         // Verrou du mode strict
         lockText = ui.text("", 13f, c.muted, ui.regular)
@@ -85,9 +95,56 @@ class SettingsActivity : Activity() {
         // Pied de page hors du bloc verrouillable : les mentions légales restent accessibles.
         root.addView(ui.footer(), LinearLayout.LayoutParams(-1, -2).apply { topMargin = ui.dp(48) })
 
-        setContentView(ui.screen(root))
+        // Espace pour que le bouton fixe ne cache pas le bas de la page
+        root.setPadding(root.paddingLeft, root.paddingTop, root.paddingRight, ui.dp(140))
+
+        val scroll = ScrollView(this).apply {
+            isFillViewport = true
+            setBackgroundColor(c.bg)
+            addView(root, -1, -2)
+        }
+        saveButton = ui.pill("Enregistrer les modifications", filled = c.accent, textColor = 0xFFFFFFFF.toInt()) { save() }.apply {
+            elevation = ui.dp(8).toFloat()
+            visibility = View.GONE
+        }
+        val frame = FrameLayout(this).apply {
+            setBackgroundColor(c.bg)
+            addView(scroll, FrameLayout.LayoutParams(-1, -1))
+            addView(saveButton, FrameLayout.LayoutParams(-2, -2).apply {
+                gravity = Gravity.BOTTOM or Gravity.CENTER_HORIZONTAL
+                bottomMargin = ui.dp(28)
+            })
+        }
+        setContentView(frame)
         loadFields()
+        val watcher = object : TextWatcher {
+            override fun beforeTextChanged(s: CharSequence?, a: Int, b: Int, c: Int) = Unit
+            override fun onTextChanged(s: CharSequence?, a: Int, b: Int, c: Int) = Unit
+            override fun afterTextChanged(s: Editable?) = updateSaveButton()
+        }
+        fields.forEach { it.addTextChangedListener(watcher) }
     }
+
+    private fun isDirty() = fields.map { it.text.toString().trim() } != snapshot
+
+    private fun updateSaveButton() {
+        saveButton.visibility = if (isDirty() && !schedule.isLocked()) View.VISIBLE else View.GONE
+    }
+
+    /** Quitter : si des nombres ont été modifiés sans être enregistrés, on demande. */
+    private fun leave() {
+        if (!isDirty() || schedule.isLocked()) { finish(); return }
+        AlertDialog.Builder(this)
+            .setTitle("Modifications non enregistrées")
+            .setMessage("Enregistrer avant de quitter ?")
+            .setPositiveButton("Enregistrer") { _, _ -> if (save()) finish() }
+            .setNegativeButton("Ignorer") { _, _ -> finish() }
+            .setNeutralButton("Annuler", null)
+            .show()
+    }
+
+    @Deprecated("Gestion simple du retour, compatible toutes versions")
+    override fun onBackPressed() = leave()
 
     override fun onResume() {
         super.onResume()
@@ -107,23 +164,25 @@ class SettingsActivity : Activity() {
 
     private fun buildContent() {
         // Limites
-        content.addView(ui.centered(ui.section("Limite par jour (min)"), top = 32))
+        content.addView(ui.centered(ui.section("Limite par jour"), top = 32))
         val limits = ui.row()
-        weekdayField = ui.numberField("60", 22f)
+        weekdayField = ui.numberField("Min", 22f)
         weekendField = ui.numberField("= semaine", 22f)
-        limits.addView(labeled("Semaine", weekdayField))
-        limits.addView(labeled("Week-end", weekendField), ui.lp(-2, -2, left = 16))
+        limits.addView(labeled("Min/J la semaine", weekdayField))
+        limits.addView(labeled("Min/J le week-end", weekendField), ui.lp(-2, -2, left = 16))
         content.addView(ui.centered(limits, top = 12))
         limitNote = ui.text("", 12f, c.muted, ui.regular)
         content.addView(ui.centered(limitNote, top = 8))
 
         // Apps + quota propre
-        content.addView(ui.centered(ui.section("Apps et quota propre (min)"), top = 32))
+        content.addView(ui.centered(ui.section("Apps et minuteur par app"), top = 32))
+        content.addView(ui.centered(ui.text("Min/J pour cette app, en plus de la limite commune. Vide = aucun.",
+            12f, c.muted, ui.regular), top = 6))
         MainActivity.APPS.forEach { (rule, name) ->
             val r = ui.row()
             val chip = ui.chip(name) { schedule.setAppEnabled(rule, !schedule.isAppEnabled(rule)); refreshChips() }
             r.addView(chip, LinearLayout.LayoutParams(ui.dp(120), -2))
-            val field = ui.numberField("aucun", 16f)
+            val field = ui.numberField("Min", 16f)
             r.addView(field, ui.lp(ui.dp(96), -2, left = 12))
             content.addView(ui.centered(r, top = 10))
             appChips += rule to chip
@@ -185,7 +244,6 @@ class SettingsActivity : Activity() {
             "Verrouille ces réglages et la désactivation de ReelsGuard.\nPour modifier, il faut attendre 2 min.",
             12f, c.muted, ui.regular).apply { setLineSpacing(0f, 1.2f) }, top = 10))
 
-        content.addView(ui.centered(ui.pill("Enregistrer", filled = c.fg, textColor = c.bg) { save() }, top = 36))
     }
 
     private fun labeled(label: String, field: EditText) = LinearLayout(this).apply {
@@ -205,19 +263,22 @@ class SettingsActivity : Activity() {
         pauseAfterField.setText("${schedule.pauseAfterMin}")
         pauseLenField.setText("${schedule.pauseLengthMin}")
         delayField.setText("${schedule.delaySeconds}")
+        snapshot = fields.map { it.text.toString().trim() }
         refreshLimitNote()
+        if (::saveButton.isInitialized) updateSaveButton()
     }
 
-    private fun save() {
-        if (schedule.isLocked()) return
-        val wd = weekdayField.text.toString().toIntOrNull()
+    /** Enregistre tous les nombres. Retourne false si une valeur est invalide. */
+    private fun save(): Boolean {
+        if (schedule.isLocked()) return false
+        val wd = weekdayField.text.toString().trim().toIntOrNull()
         if (wd == null) {
             Toast.makeText(this, "Entre une limite pour la semaine", Toast.LENGTH_SHORT).show()
-            return
+            return false
         }
         val weNow = store.setLimit(weekendField.text.toString().toIntOrNull() ?: -1, weekend = true)
         val wdNow = store.setLimit(wd, weekend = false)
-        quotaFields.forEach { (rule, f) -> store.setAppQuota(rule, f.text.toString().toIntOrNull() ?: 0) }
+        quotaFields.forEach { (rule, f) -> store.setAppQuota(rule, f.text.toString().trim().toIntOrNull() ?: 0) }
         pauseAfterField.text.toString().toIntOrNull()?.let { schedule.pauseAfterMin = it }
         pauseLenField.text.toString().toIntOrNull()?.let { schedule.pauseLengthMin = it }
         delayField.text.toString().toIntOrNull()?.let { schedule.delaySeconds = it }
@@ -229,6 +290,7 @@ class SettingsActivity : Activity() {
         }
         loadFields()
         RemainingWidget.update(this)
+        return true
     }
 
     private fun refreshLimitNote() {
@@ -331,5 +393,6 @@ class SettingsActivity : Activity() {
     private fun applyLock(locked: Boolean) {
         ui.setEnabledDeep(content, !locked)
         content.alpha = if (locked) 0.35f else 1f
+        if (::saveButton.isInitialized) updateSaveButton()
     }
 }

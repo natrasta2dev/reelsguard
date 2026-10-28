@@ -3,6 +3,15 @@
 Toutes les évolutions notables de ReelsGuard sont listées ici.
 Le projet suit le [versionnage sémantique](https://semver.org/lang/fr/) : une hausse du numéro **majeur** rend la mise à jour obligatoire dans l'application.
 
+## [1.0.1] - 2026-10-28
+
+### Corrigé
+- Réglages : les minutes par app (et les autres nombres) n'étaient enregistrées qu'avec le bouton tout en bas de la page, facile à manquer. Le bouton « Enregistrer les modifications » est désormais fixé en bas de l'écran, apparaît dès qu'un nombre change, et l'app demande quoi faire si tu quittes sans enregistrer.
+
+### Amélioré
+- Limite par jour plus claire : « Min/J la semaine » et « Min/J le week-end ».
+- Activation : écran dédié, impossible à ignorer tant que le service n'est pas actif, avec des étapes détaillées dans l'ordre (message de refus, paramètres restreints, activation, batterie, notifications) et un bouton qui ouvre directement le bon écran.
+
 ## [1.0.0] - 2026-10-27
 
 Première version publique.
@@ -31,4 +40,5 @@ Première version publique.
 - Mises à jour : notification pour une version mineure, écran obligatoire pour une version majeure.
 - Mode d'emploi intégré, diagnostic partageable, mentions légales et politique de confidentialité intégrées.
 
+[1.0.1]: https://github.com/natrasta2dev/reelsguard/releases/tag/v1.0.1
 [1.0.0]: https://github.com/natrasta2dev/reelsguard/releases/tag/v1.0.0

@@ -41,8 +41,10 @@ class MainActivity : Activity() {
     private lateinit var guideToggle: TextView
     private var guideOpen = false
     private lateinit var mainScreen: View
+    private lateinit var setupScreen: View
     private lateinit var updateBanner: TextView
-    private var blockingShown = false
+    /** Écran affiché : "main", "setup" (service inactif) ou "update" (mise à jour obligatoire). */
+    private var shown = ""
 
     private val handler = Handler(Looper.getMainLooper())
     private val ticker = object : Runnable {
@@ -104,16 +106,34 @@ class MainActivity : Activity() {
         }
         root.addView(ui.centered(serviceButton, top = 12))
 
-        guideToggle = ui.link("Comment l'activer ?") { guideOpen = !guideOpen; refresh() }
+        guideToggle = ui.link("Revoir le mode d'emploi") { guideOpen = !guideOpen; refresh() }
         root.addView(ui.centered(guideToggle, top = 8))
-        guide = buildGuide()
+        guide = buildSteps()
         root.addView(guide, LinearLayout.LayoutParams(-1, -2).apply { topMargin = ui.dp(16) })
 
         root.addView(ui.footer(), LinearLayout.LayoutParams(-1, -2).apply { topMargin = ui.dp(48) })
 
         mainScreen = ui.screen(root)
-        setContentView(mainScreen)
+        setupScreen = buildSetupScreen()
+        showScreen(if (isServiceEnabled()) "main" else "setup")
         askNotificationPermission()
+    }
+
+    private fun showScreen(which: String) {
+        if (which == shown) return
+        shown = which
+        setContentView(when (which) {
+            "update" -> buildUpdateScreen()
+            "setup" -> setupScreen
+            else -> mainScreen
+        })
+    }
+
+    /** Priorité : mise à jour obligatoire, puis activation du service, puis accueil. */
+    private fun pickScreen() = when {
+        UpdateChecker.kind(this) == UpdateChecker.Kind.MAJOR -> "update"
+        !isServiceEnabled() -> "setup"
+        else -> "main"
     }
 
     override fun onResume() {
@@ -129,11 +149,8 @@ class MainActivity : Activity() {
     /** Majeure : écran bloquant. Mineure : bandeau discret. */
     private fun applyUpdateState() {
         val kind = UpdateChecker.kind(this)
-        if (kind == UpdateChecker.Kind.MAJOR) {
-            if (!blockingShown) { setContentView(buildUpdateScreen()); blockingShown = true }
-            return
-        }
-        if (blockingShown) { setContentView(mainScreen); blockingShown = false }
+        showScreen(pickScreen())
+        if (kind == UpdateChecker.Kind.MAJOR) return
         val r = UpdateChecker.cached(this)
         updateBanner.visibility = if (kind == UpdateChecker.Kind.MINOR) View.VISIBLE else View.GONE
         if (r != null) updateBanner.text = "Mettre à jour vers la v${r.version}"
@@ -184,6 +201,8 @@ class MainActivity : Activity() {
     // ---------- affichage ----------
 
     private fun refresh() {
+        showScreen(pickScreen())
+        if (shown != "main") return
         val limit = store.limitMinutes
         val used = store.usedMs
         val left = store.remainingMs
@@ -237,63 +256,119 @@ class MainActivity : Activity() {
             else { setColor(c.accent); setStroke(0, Color.TRANSPARENT) }
         }
 
-        guide.visibility = if (!on || guideOpen) View.VISIBLE else View.GONE
-        guideToggle.visibility = if (on) View.VISIBLE else View.GONE
-        guideToggle.text = if (guideOpen) "Masquer l'aide" else "Comment l'activer ?"
+        guide.visibility = if (guideOpen) View.VISIBLE else View.GONE
+        guideToggle.text = if (guideOpen) "Masquer le mode d'emploi" else "Revoir le mode d'emploi"
     }
 
-    // ---------- mode d'emploi ----------
+    // ---------- activation (mode d'emploi) ----------
 
-    private fun buildGuide(): LinearLayout {
+    /**
+     * Écran affiché tant que le service d'accessibilité n'est pas actif : il ne peut pas être fermé
+     * et disparaît tout seul dès que le service est activé (vérifié chaque seconde).
+     */
+    private fun buildSetupScreen(): View {
+        val col = ui.column()
+        col.addView(ui.centered(ui.text("REELSGUARD", 12f, c.muted, ui.medium).apply { letterSpacing = 0.25f }))
+        col.addView(ui.centered(ui.text("Active ReelsGuard", 34f, c.fg, ui.light), top = 32))
+        col.addView(ui.centered(ui.text(
+            "Une seule fois, environ 2 minutes.\nSuis les étapes dans l'ordre : chaque bouton t'emmène au bon endroit.",
+            14f, c.muted, ui.regular).apply { setLineSpacing(0f, 1.25f) }, top = 12))
+
+        col.addView(ui.centered(ui.text("● Service inactif", 14f, c.accent, ui.medium).apply {
+            background = GradientDrawable().apply { cornerRadius = ui.dp(20).toFloat(); setStroke(ui.dp(1), c.accent) }
+            setPadding(ui.dp(16), ui.dp(8), ui.dp(16), ui.dp(8))
+        }, top = 20))
+
+        col.addView(buildSteps(), LinearLayout.LayoutParams(-1, -2).apply { topMargin = ui.dp(28) })
+
+        col.addView(ui.centered(ui.text(
+            "Cet écran disparaîtra dès que le service sera actif.",
+            12f, c.muted, ui.regular), top = 20))
+        col.addView(ui.footer(), LinearLayout.LayoutParams(-1, -2).apply { topMargin = ui.dp(40) })
+        return ui.screen(col)
+    }
+
+    private data class Step(val title: String, val body: String, val button: String?, val action: (() -> Unit)?)
+
+    private fun buildSteps(): LinearLayout {
         val box = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             background = GradientDrawable().apply {
                 cornerRadius = ui.dp(20).toFloat()
                 setStroke(ui.dp(1), c.line)
             }
-            setPadding(ui.dp(20), ui.dp(20), ui.dp(20), ui.dp(8))
+            setPadding(ui.dp(20), ui.dp(22), ui.dp(20), ui.dp(6))
         }
         val appSettings = {
             startActivity(Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS).setData(Uri.parse("package:$packageName")))
         }
         val a11y = { startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS)) }
-        val settings = { startActivity(Intent(this, SettingsActivity::class.java)) }
-        val steps = listOf(
-            Triple("Autoriser les paramètres restreints",
-                "Infos de l'appli → ⋮ en haut à droite → Autoriser les paramètres restreints. " +
-                    "L'option n'apparaît qu'après une première tentative d'activation refusée.", appSettings),
-            Triple("Activer le service",
-                "Accessibilité → Applications installées → ReelsGuard → activer.", a11y),
-            Triple("Batterie non restreinte",
-                "Infos de l'appli → Batterie → Non restreinte, sinon le téléphone peut endormir ReelsGuard.", appSettings),
-            Triple("Autoriser les notifications",
-                "Pour voir le temps restant pendant que tu regardes.", appSettings),
-            Triple("Tout régler",
-                "Limites semaine et week-end, apps, jours, plages horaires, pause, délai et mode strict.", settings),
-        )
-        steps.forEachIndexed { i, (title, body, action) -> box.addView(guideStep(i + 1, title, body, action)) }
+        val restricted = Build.VERSION.SDK_INT >= 33
+        val steps = mutableListOf<Step>()
+        if (restricted) {
+            steps += Step(
+                "Provoquer le message de refus",
+                "Accessibilité → Applications installées (ou « Services installés ») → ReelsGuard → " +
+                    "appuie sur l'interrupteur. Android affiche « Paramètre restreint » : appuie sur OK.\n" +
+                    "C'est normal : ce refus est obligatoire pour débloquer l'étape suivante.",
+                "Ouvrir l'accessibilité", a11y)
+            steps += Step(
+                "Autoriser les paramètres restreints",
+                "Dans « Infos de l'appli » ReelsGuard, appuie sur ⋮ en haut à droite → " +
+                    "« Autoriser les paramètres restreints », puis confirme avec ton code ou ton empreinte.\n" +
+                    "Le ⋮ n'apparaît qu'après l'étape 1.",
+                "Ouvrir les infos de l'appli", appSettings)
+        }
+        steps += Step(
+            "Activer le service",
+            (if (restricted) "Retourne dans " else "") +
+                "Accessibilité → Applications installées → ReelsGuard → active l'interrupteur, puis appuie sur « Autoriser ».",
+            "Ouvrir l'accessibilité", a11y)
+        steps += Step(
+            "Batterie non restreinte",
+            "Infos de l'appli → Batterie → « Non restreinte ». Sans ça, Android peut mettre ReelsGuard en veille " +
+                "et il arrête de compter.",
+            "Ouvrir les infos de l'appli", appSettings)
+        steps += Step(
+            "Autoriser les notifications",
+            "Infos de l'appli → Notifications → activer. Pour voir le temps restant et être prévenu des mises à jour.",
+            "Ouvrir les infos de l'appli", appSettings)
+        steps += Step(
+            "Régler ta limite",
+            "Dans Réglages : minutes par jour en semaine et le week-end, apps, jours, horaires, pause, délai et mode strict.",
+            null, null)
+
+        steps.forEachIndexed { i, st -> box.addView(stepView(i + 1, st)) }
+        if (!restricted) box.addView(ui.text("Ton Android n'a pas besoin des étapes de déblocage : commence directement par activer le service.",
+            12f, c.muted, ui.regular).apply { gravity = Gravity.START; setPadding(0, 0, 0, ui.dp(14)) })
         box.addView(ui.text("Après une mise à jour de ReelsGuard, vérifie que le service est toujours actif.",
-            12f, c.muted, ui.regular).apply { setPadding(0, ui.dp(4), 0, ui.dp(12)) })
+            12f, c.muted, ui.regular).apply { gravity = Gravity.START; setPadding(0, 0, 0, ui.dp(14)) })
         return box
     }
 
-    private fun guideStep(n: Int, title: String, body: String, action: () -> Unit): View {
+    private fun stepView(n: Int, st: Step): View {
         val row = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
-            setPadding(0, 0, 0, ui.dp(16))
-            setOnClickListener { action() }
+            setPadding(0, 0, 0, ui.dp(22))
         }
         row.addView(ui.text("$n", 13f, c.bg, ui.medium).apply {
             background = GradientDrawable().apply { shape = GradientDrawable.OVAL; setColor(c.fg) }
-        }, LinearLayout.LayoutParams(ui.dp(24), ui.dp(24)).apply { rightMargin = ui.dp(14) })
+        }, LinearLayout.LayoutParams(ui.dp(26), ui.dp(26)).apply { rightMargin = ui.dp(14) })
 
         val col = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
-        col.addView(ui.text("$title  ›", 15f, c.fg, ui.medium).apply { gravity = Gravity.START })
-        col.addView(ui.text(body, 13f, c.muted, ui.regular).apply {
+        col.addView(ui.text(st.title, 16f, c.fg, ui.medium).apply { gravity = Gravity.START })
+        col.addView(ui.text(st.body, 13f, c.muted, ui.regular).apply {
             gravity = Gravity.START
-            setPadding(0, ui.dp(4), 0, 0)
-            setLineSpacing(0f, 1.2f)
+            setPadding(0, ui.dp(6), 0, 0)
+            setLineSpacing(0f, 1.25f)
         })
+        if (st.button != null && st.action != null) {
+            col.addView(ui.text(st.button + "  ›", 13f, c.fg, ui.medium).apply {
+                background = GradientDrawable().apply { cornerRadius = ui.dp(18).toFloat(); setStroke(ui.dp(1), c.line) }
+                setPadding(ui.dp(16), ui.dp(10), ui.dp(16), ui.dp(10))
+                setOnClickListener { st.action.invoke() }
+            }, LinearLayout.LayoutParams(-2, -2).apply { topMargin = ui.dp(12) })
+        }
         row.addView(col, LinearLayout.LayoutParams(0, -2, 1f))
         return row
     }
