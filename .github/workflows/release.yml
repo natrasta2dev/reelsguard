@@ -1,5 +1,9 @@
-# Compile, signe et joint l'APK à une release dès qu'elle est publiée sur GitHub
-# (Releases → Draft a new release → tag vX.Y.Z → Publish release).
+# Publie une release signée de ReelsGuard.
+#
+# Deux déclencheurs :
+#  - automatique : quand versionName change dans app/build.gradle.kts sur main,
+#    la release vX.Y.Z est créée (si elle n'existe pas déjà) ;
+#  - manuel : Releases → Draft a new release → tag vX.Y.Z → Publish release.
 #
 # Secrets requis (Settings → Secrets and variables → Actions) :
 #   RG_KEYSTORE_B64       keystore de signature encodé en base64
@@ -8,11 +12,20 @@
 name: Release
 
 on:
+  push:
+    branches: [main]
+    paths:
+      - app/build.gradle.kts
+      - .github/workflows/release.yml
   release:
     types: [published]
 
 permissions:
   contents: write
+
+concurrency:
+  group: release
+  cancel-in-progress: false
 
 jobs:
   release:
@@ -20,22 +33,32 @@ jobs:
     steps:
       - uses: actions/checkout@v5
         with:
-          ref: ${{ github.event.release.tag_name }}
+          ref: ${{ github.event_name == 'release' && github.event.release.tag_name || github.sha }}
 
-      - name: Vérifier que le tag correspond à versionName
+      - name: Version et tag
+        id: v
         shell: bash
         run: |
-          TAG="${{ github.event.release.tag_name }}"
-          TAG="${TAG#v}"
           VERSION=$(grep -oP 'versionName = "\K[^"]+' app/build.gradle.kts)
-          echo "Tag : $TAG · versionName : $VERSION"
-          if [ "$TAG" != "$VERSION" ]; then
-            echo "::error::Le tag v$TAG ne correspond pas à versionName ($VERSION) dans app/build.gradle.kts"
-            exit 1
-          fi
           echo "VERSION=$VERSION" >> "$GITHUB_ENV"
+          if [ "${{ github.event_name }}" = "release" ]; then
+            TAG="${{ github.event.release.tag_name }}"
+            if [ "${TAG#v}" != "$VERSION" ]; then
+              echo "::error::Le tag $TAG ne correspond pas à versionName ($VERSION) dans app/build.gradle.kts"
+              exit 1
+            fi
+          else
+            TAG="v$VERSION"
+            if git ls-remote --exit-code --tags origin "refs/tags/$TAG" >/dev/null; then
+              echo "La release $TAG existe déjà : rien à publier."
+              echo "skip=true" >> "$GITHUB_OUTPUT"
+            fi
+          fi
+          echo "TAG=$TAG" >> "$GITHUB_ENV"
+          echo "Version $VERSION · tag $TAG"
 
       - name: Récupérer la clé de signature
+        if: steps.v.outputs.skip != 'true'
         shell: bash
         env:
           KEYSTORE_B64: ${{ secrets.RG_KEYSTORE_B64 }}
@@ -48,15 +71,18 @@ jobs:
           echo "RG_KEYSTORE_PATH=$RUNNER_TEMP/release.jks" >> "$GITHUB_ENV"
 
       - uses: actions/setup-java@v5
+        if: steps.v.outputs.skip != 'true'
         with:
           distribution: temurin
           java-version: "17"
 
       - uses: gradle/actions/setup-gradle@v4
+        if: steps.v.outputs.skip != 'true'
         with:
           gradle-version: "8.7"
 
       - name: Compiler (release signée)
+        if: steps.v.outputs.skip != 'true'
         shell: bash
         env:
           RG_KEYSTORE_PASSWORD: ${{ secrets.RG_KEYSTORE_PASSWORD }}
@@ -79,6 +105,7 @@ jobs:
           done
 
       - name: Notes de version depuis CHANGELOG.md
+        if: steps.v.outputs.skip != 'true'
         shell: bash
         run: |
           awk -v v="$VERSION" '
@@ -95,8 +122,10 @@ jobs:
           } >> notes.md
 
       - uses: softprops/action-gh-release@v2
+        if: steps.v.outputs.skip != 'true'
         with:
-          tag_name: ${{ github.event.release.tag_name }}
+          tag_name: ${{ env.TAG }}
+          target_commitish: ${{ github.sha }}
           name: ReelsGuard v${{ env.VERSION }}
           body_path: notes.md
           files: |
