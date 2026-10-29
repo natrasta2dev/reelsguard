@@ -4,7 +4,7 @@ name: CI
 
 on:
   push:
-    branches: [main]
+    branches: [main, ReelGuardFamille]
   pull_request:
   workflow_dispatch:
 
@@ -27,7 +27,7 @@ jobs:
         shell: bash
         run: |
           set -o pipefail
-          gradle assembleDebug --no-daemon 2>&1 | tee build.log
+          gradle assemblePersoDebug assembleFamilleDebug --no-daemon 2>&1 | tee build.log
 
       - name: Remonter les erreurs
         if: failure()
@@ -40,5 +40,5 @@ jobs:
       - uses: actions/upload-artifact@v4
         with:
           name: ReelsGuard-debug
-          path: app/build/outputs/apk/debug/*.apk
+          path: app/build/outputs/apk/*/debug/*.apk
           retention-days: 14

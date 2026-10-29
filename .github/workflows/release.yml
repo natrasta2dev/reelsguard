@@ -1,31 +1,26 @@
-# Publie une release signée de ReelsGuard.
+# Branche ReelGuardFamille : publie l'APK signé de l'édition Famille.
 #
-# Deux déclencheurs :
-#  - automatique : à chaque push sur main qui touche la version ou ce workflow,
-#    la release vX.Y.Z est créée ; si elle existe déjà sur un autre commit, elle est
-#    reconstruite sur le nouveau commit (tag déplacé, APK remplacé) ;
-#  - manuel : Releases → Draft a new release → tag vX.Y.Z → Publish release.
+# À chaque push sur la branche qui touche l'app ou ce workflow, la release « famille-vX.Y.Z »
+# (versionName de la variante famille dans app/build.gradle.kts) est créée, ou reconstruite si elle
+# existe déjà sur un autre commit. Elle n'est jamais marquée « dernière release », pour ne pas
+# remplacer l'édition perso publiée depuis main.
 #
-# Secrets requis (Settings → Secrets and variables → Actions) :
-#   RG_KEYSTORE_B64       keystore de signature encodé en base64
-#   RG_KEYSTORE_PASSWORD  mot de passe du keystore (et de la clé)
-#   RG_KEY_ALIAS          (facultatif) alias de la clé, « reelsguard » par défaut
-name: Release
+# Secrets requis : RG_KEYSTORE_B64, RG_KEYSTORE_PASSWORD, RG_KEY_ALIAS (facultatif).
+name: Release Famille
 
 on:
   push:
-    branches: [main]
+    branches: [ReelGuardFamille]
     paths:
-      - app/build.gradle.kts
+      - app/**
+      - CHANGELOG-FAMILLE.md
       - .github/workflows/release.yml
-  release:
-    types: [published]
 
 permissions:
   contents: write
 
 concurrency:
-  group: release
+  group: release-famille
   cancel-in-progress: false
 
 jobs:
@@ -33,34 +28,23 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
-        with:
-          ref: ${{ github.event_name == 'release' && github.event.release.tag_name || github.sha }}
 
       - name: Version et tag
         id: v
         shell: bash
         run: |
-          VERSION=$(grep -oP 'versionName = "\K[^"]+' app/build.gradle.kts)
-          echo "VERSION=$VERSION" >> "$GITHUB_ENV"
-          if [ "${{ github.event_name }}" = "release" ]; then
-            TAG="${{ github.event.release.tag_name }}"
-            if [ "${TAG#v}" != "$VERSION" ]; then
-              echo "::error::Le tag $TAG ne correspond pas à versionName ($VERSION) dans app/build.gradle.kts"
-              exit 1
-            fi
-          else
-            TAG="v$VERSION"
-            REMOTE=$(git ls-remote --tags origin "refs/tags/$TAG" | cut -f1)
-            if [ "$REMOTE" = "$GITHUB_SHA" ]; then
-              echo "La release $TAG est déjà à jour : rien à publier."
-              echo "skip=true" >> "$GITHUB_OUTPUT"
-            elif [ -n "$REMOTE" ]; then
-              echo "La release $TAG existe sur un autre commit : elle sera reconstruite sur $GITHUB_SHA."
-              echo "replace=true" >> "$GITHUB_OUTPUT"
-            fi
+          VERSION=$(awk '/create\("famille"\)/{f=1} f && /versionName/{match($0,/"[^"]+"/); print substr($0,RSTART+1,RLENGTH-2); exit}' app/build.gradle.kts)
+          [ -n "$VERSION" ] || { echo "::error::versionName de la variante famille introuvable"; exit 1; }
+          TAG="famille-v$VERSION"
+          REMOTE=$(git ls-remote --tags origin "refs/tags/$TAG" | cut -f1)
+          if [ "$REMOTE" = "$GITHUB_SHA" ]; then
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+          elif [ -n "$REMOTE" ]; then
+            echo "replace=true" >> "$GITHUB_OUTPUT"
           fi
+          echo "VERSION=$VERSION" >> "$GITHUB_ENV"
           echo "TAG=$TAG" >> "$GITHUB_ENV"
-          echo "Version $VERSION · tag $TAG"
+          echo "Famille $VERSION · tag $TAG"
 
       - name: Récupérer la clé de signature
         if: steps.v.outputs.skip != 'true'
@@ -68,10 +52,7 @@ jobs:
         env:
           KEYSTORE_B64: ${{ secrets.RG_KEYSTORE_B64 }}
         run: |
-          if [ -z "$KEYSTORE_B64" ]; then
-            echo "::error::Secret RG_KEYSTORE_B64 manquant : impossible de signer la release."
-            exit 1
-          fi
+          [ -n "$KEYSTORE_B64" ] || { echo "::error::Secret RG_KEYSTORE_B64 manquant"; exit 1; }
           echo "$KEYSTORE_B64" | base64 -d > "$RUNNER_TEMP/release.jks"
           echo "RG_KEYSTORE_PATH=$RUNNER_TEMP/release.jks" >> "$GITHUB_ENV"
 
@@ -86,7 +67,7 @@ jobs:
         with:
           gradle-version: "8.7"
 
-      - name: Compiler (release signée)
+      - name: Compiler (Famille, release signée)
         if: steps.v.outputs.skip != 'true'
         shell: bash
         env:
@@ -94,9 +75,9 @@ jobs:
           RG_KEY_ALIAS: ${{ secrets.RG_KEY_ALIAS }}
         run: |
           set -o pipefail
-          gradle assembleRelease --no-daemon 2>&1 | tee build.log
-          APK="ReelsGuard-v$VERSION.apk"
-          cp app/build/outputs/apk/release/app-release.apk "$APK"
+          gradle assembleFamilleRelease --no-daemon 2>&1 | tee build.log
+          APK="ReelsGuard-Famille-v$VERSION.apk"
+          cp app/build/outputs/apk/famille/release/app-famille-release.apk "$APK"
           sha256sum "$APK" > "$APK.sha256"
           echo "APK=$APK" >> "$GITHUB_ENV"
 
@@ -109,7 +90,7 @@ jobs:
             echo "::error::${line}"
           done
 
-      - name: Notes de version depuis CHANGELOG.md
+      - name: Notes de version
         if: steps.v.outputs.skip != 'true'
         shell: bash
         run: |
@@ -117,16 +98,16 @@ jobs:
             $0 ~ "^## \\[" v "\\]" { on=1; next }
             on && /^## \[/ { exit }
             on { print }
-          ' CHANGELOG.md > notes.md
+          ' CHANGELOG-FAMILLE.md > notes.md
           {
             echo
             echo "---"
-            echo "**Installation** : télécharge \`$APK\` depuis ton téléphone, puis suis le [guide d'installation](https://github.com/${GITHUB_REPOSITORY}#installation)."
+            echo "**ReelsGuard Famille** — édition contrôle parental. Télécharge \`$APK\` sur le téléphone de l'enfant."
             echo
             echo "SHA-256 : \`$(cut -d' ' -f1 "$APK.sha256")\`"
           } >> notes.md
 
-      - name: Déplacer le tag sur ce commit (même version republiée)
+      - name: Déplacer le tag sur ce commit
         if: steps.v.outputs.replace == 'true'
         shell: bash
         run: git push --force origin "$GITHUB_SHA:refs/tags/$TAG"
@@ -136,10 +117,10 @@ jobs:
         with:
           tag_name: ${{ env.TAG }}
           target_commitish: ${{ github.sha }}
-          name: ReelsGuard v${{ env.VERSION }}
+          name: ReelsGuard Famille v${{ env.VERSION }}
           body_path: notes.md
           files: |
             ${{ env.APK }}
             ${{ env.APK }}.sha256
-          make_latest: true
+          make_latest: false
           overwrite_files: true

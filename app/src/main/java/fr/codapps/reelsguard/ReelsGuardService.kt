@@ -42,6 +42,7 @@ class ReelsGuardService : AccessibilityService() {
     private lateinit var store: UsageStore
     private lateinit var schedule: Schedule
     private lateinit var notifier: Notifier
+    private lateinit var family: FamilyConfig
     private lateinit var windowManager: WindowManager
     private lateinit var powerManager: PowerManager
     private val handler = Handler(Looper.getMainLooper())
@@ -88,6 +89,8 @@ class ReelsGuardService : AccessibilityService() {
         store = UsageStore(this)
         schedule = Schedule(this)
         notifier = Notifier(this)
+        family = FamilyConfig(this)
+        if (Edition.isFamily) notifier.showParental()
         windowManager = getSystemService(WINDOW_SERVICE) as WindowManager
         powerManager = getSystemService(POWER_SERVICE) as PowerManager
         lastTick = SystemClock.elapsedRealtime()
@@ -117,7 +120,7 @@ class ReelsGuardService : AccessibilityService() {
             .firstNotNullOfOrNull { w ->
                 w.root?.takeIf { r ->
                     val p = r.packageName?.toString().orEmpty()
-                    AppRules.forPackage(p) != null || WebRules.isBrowser(p)
+                    Edition.isFamily || AppRules.forPackage(p) != null || WebRules.isBrowser(p)
                 }
             }
     }
@@ -144,12 +147,18 @@ class ReelsGuardService : AccessibilityService() {
             lastWidgetUpdate = now
             RemainingWidget.update(this, force = false)
             UpdateChecker.check(this) // limité en interne à une fois toutes les 6 h
+            if (Edition.isFamily) notifier.showParental() // reste visible en permanence
         }
 
         val root = if (powerManager.isInteractive) foregroundRoot() else null
 
         // Mode strict : pas d'accès aux pages de ReelsGuard dans les Paramètres.
         if (root != null && schedule.isLocked() && guardSettings(root, now)) return
+
+        // Édition Famille : navigation privée, couvre-feu / temps scolaire, apps entières limitées.
+        if (Edition.isFamily && root != null && ParentLock.isSetUp(this) && !ParentLock.sessionActive(this)) {
+            if (familyTick(root, now, elapsed)) return
+        }
 
         val pkg = root?.packageName?.toString()
         var rule = pkg?.let { AppRules.forPackage(it) }
@@ -252,6 +261,7 @@ class ReelsGuardService : AccessibilityService() {
     }
 
     private fun idle() {
+        hideKidBlockIfStale()
         removeCover()
         stopBreathe(resume = false)
         if (::notifier.isInitialized) notifier.cancel()
@@ -262,23 +272,169 @@ class ReelsGuardService : AccessibilityService() {
             // Navigateur : page précédente ; si on y est toujours, retour à l'écran d'accueil.
             webKicks++
             performGlobalAction(if (webKicks >= 3) GLOBAL_ACTION_HOME else GLOBAL_ACTION_BACK)
-            toast(msg)
+            toastOrKid(msg)
             return
         }
         if (rule.wholeApp) {
             performGlobalAction(GLOBAL_ACTION_HOME)
-            toast(msg)
+            toastOrKid(msg)
             return
         }
         if (rule.redirectTabLabels.isNotEmpty()) {
             val target = findBottomNode(root, rule.redirectTabLabels, rule.navTopToo)
             if (target != null && target.performAction(AccessibilityNodeInfo.ACTION_CLICK)) {
-                toast(msg)
+                toastOrKid(msg)
                 return
             }
         }
         performGlobalAction(GLOBAL_ACTION_BACK)
-        toast(msg)
+        toastOrKid(msg)
+    }
+
+    private fun toastOrKid(msg: String) {
+        if (Edition.isFamily) showKidBlock(msg, "Demande à un parent si tu as besoin de plus de temps.", canRequest = true)
+        else toast(msg)
+    }
+
+    // ---------- édition Famille ----------
+
+    private var browserCache: Set<String> = emptySet()
+    private var browserCacheAt = 0L
+    private var privKicks = 0
+
+    private fun browsers(now: Long): Set<String> {
+        if (now - browserCacheAt > 10 * 60_000L || browserCache.isEmpty()) {
+            browserCache = runCatching { FamilyConfig.browserPackages(this) }.getOrDefault(WebRules.BROWSERS.keys)
+            browserCacheAt = now
+        }
+        return browserCache
+    }
+
+    /** Retourne true si l'app au premier plan a été traitée (bloquée ou comptée) ici. */
+    private fun familyTick(root: AccessibilityNodeInfo, now: Long, elapsed: Long): Boolean {
+        val pkg = root.packageName?.toString() ?: return false
+        if (pkg == packageName || pkg in IGNORED_PACKAGES) return false
+
+        // 1. Navigation privée : désactivée dans tous les navigateurs
+        if (pkg in browsers(now)) {
+            if (isPrivateBrowsing(root)) {
+                idle()
+                if (now - lastKickOut > KICK_COOLDOWN_MS) {
+                    lastKickOut = now
+                    privKicks++
+                    performGlobalAction(if (privKicks >= 3) GLOBAL_ACTION_HOME else GLOBAL_ACTION_BACK)
+                    store.logEvent(UsageStore.EV_PRIVATE)
+                    toast("La navigation privée est désactivée")
+                }
+                return true
+            }
+            privKicks = 0
+        }
+
+        // 2. Couvre-feu / temps scolaire : seules les apps autorisées restent utilisables
+        family.activeRestriction()?.let { name ->
+            if (pkg !in family.allowedNow()) {
+                idle()
+                if (now - lastKickOut > KICK_COOLDOWN_MS) {
+                    lastKickOut = now
+                    performGlobalAction(GLOBAL_ACTION_HOME)
+                    store.logEvent(UsageStore.EV_RESTRICTED)
+                    showKidBlock(name, "Cette app n'est pas disponible pour le moment.", canRequest = false)
+                }
+                return true
+            }
+        }
+
+        // 3. App entière limitée par le parent (ne compte pas dans la limite des vidéos courtes)
+        val rule = family.ruleFor(pkg) ?: return false
+        if (rule != currentRule) { removeCover(); currentRule = rule }
+        val limitMs = (family.limitFor(pkg) + store.bonusToday()) * 60_000L
+        val used = store.usedToday(rule)
+        if (limitMs <= 0 || used >= limitMs) {
+            idle()
+            if (now - lastKickOut > KICK_COOLDOWN_MS) {
+                lastKickOut = now
+                performGlobalAction(GLOBAL_ACTION_HOME)
+                showKidBlock("Temps écoulé", "C'est fini pour aujourd'hui avec cette app.", canRequest = true)
+            }
+        } else {
+            store.addAppOnlyUsage(rule, elapsed)
+            notifier.show("${(limitMs - used) / 60_000 + 1} min restantes")
+        }
+        return true
+    }
+
+    /** Navigation privée : textes propres à ce mode dans l'interface du navigateur (hors contenu des pages). */
+    private fun isPrivateBrowsing(root: AccessibilityNodeInfo): Boolean {
+        val queue = ArrayDeque<AccessibilityNodeInfo>()
+        queue.add(root)
+        var n = 0
+        while (queue.isNotEmpty() && n < 700) {
+            val node = queue.removeFirst(); n++
+            if (node.className?.toString()?.contains("WebView") == true) continue // contenu des sites ignoré
+            val t = ((node.text ?: "").toString() + " " + (node.contentDescription ?: "").toString()).lowercase()
+            if (t.isNotBlank() && PRIVATE_KEYS.any { it in t }) return true
+            for (i in 0 until node.childCount) node.getChild(i)?.let(queue::add)
+        }
+        return false
+    }
+
+    // Écran de blocage pour l'enfant
+    private var kidView: View? = null
+    private var kidShownAt = 0L
+
+    private fun showKidBlock(title: String, body: String, canRequest: Boolean) {
+        val now = SystemClock.elapsedRealtime()
+        if (kidView != null || now - kidShownAt < 15_000L) { toast(title); return }
+        kidShownAt = now
+        val d = resources.displayMetrics.density
+        fun t(s: String, size: Float, color: Int, face: String) = TextView(this).apply {
+            text = s; textSize = size; setTextColor(color); gravity = Gravity.CENTER
+            typeface = Typeface.create(face, Typeface.NORMAL); includeFontPadding = false
+        }
+        fun btn(label: String, bg: Int, fg: Int, onClick: () -> Unit) = t(label, 16f, fg, "sans-serif-medium").apply {
+            background = GradientDrawable().apply { setColor(bg); cornerRadius = 28 * d }
+            setPadding((30 * d).toInt(), (15 * d).toInt(), (30 * d).toInt(), (15 * d).toInt())
+            setOnClickListener { onClick() }
+        }
+        val col = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL; gravity = Gravity.CENTER
+            setBackgroundColor(0xF20E0E0E.toInt()); isClickable = true
+            setPadding((32 * d).toInt(), 0, (32 * d).toInt(), 0)
+        }
+        col.addView(t("⏳", 56f, 0xFFF2F2F2.toInt(), "sans-serif"))
+        col.addView(t(title, 30f, 0xFFF2F2F2.toInt(), "sans-serif-medium"), LinearLayout.LayoutParams(-2, -2).apply { topMargin = (20 * d).toInt() })
+        col.addView(t(body, 16f, 0xFF8A8A8A.toInt(), "sans-serif").apply { setLineSpacing(0f, 1.25f) },
+            LinearLayout.LayoutParams(-2, -2).apply { topMargin = (14 * d).toInt() })
+        if (canRequest) {
+            col.addView(btn("Demander plus de temps", 0xFFFF5A36.toInt(), 0xFFFFFFFF.toInt()) {
+                hideKidBlock()
+                startActivity(android.content.Intent(this, RequestTimeActivity::class.java)
+                    .addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK))
+            }, LinearLayout.LayoutParams(-2, -2).apply { topMargin = (36 * d).toInt() })
+        }
+        col.addView(btn("OK", 0xFFF2F2F2.toInt(), 0xFF111111.toInt()) { hideKidBlock() },
+            LinearLayout.LayoutParams(-2, -2).apply { topMargin = (14 * d).toInt() })
+        val params = WindowManager.LayoutParams(
+            WindowManager.LayoutParams.MATCH_PARENT, WindowManager.LayoutParams.MATCH_PARENT,
+            WindowManager.LayoutParams.TYPE_ACCESSIBILITY_OVERLAY,
+            WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN,
+            PixelFormat.TRANSLUCENT
+        )
+        runCatching { windowManager.addView(col, params) }.onSuccess {
+            kidView = col
+            handler.postDelayed({ hideKidBlock() }, 12_000L)
+        }
+    }
+
+    /** L'écran enfant se ferme seul ; rien à faire ici sinon. */
+    private fun hideKidBlockIfStale() {
+        if (kidView != null && SystemClock.elapsedRealtime() - kidShownAt > 12_000L) hideKidBlock()
+    }
+
+    private fun hideKidBlock() {
+        kidView?.let { runCatching { windowManager.removeView(it) } }
+        kidView = null
     }
 
     private fun maybeWarn(rule: AppRule) {
@@ -302,7 +458,10 @@ class ReelsGuardService : AccessibilityService() {
         if (now - lastKickOut > KICK_COOLDOWN_MS) {
             lastKickOut = now
             performGlobalAction(GLOBAL_ACTION_BACK)
-            toast("Mode strict : déverrouille d'abord dans ReelsGuard")
+            if (Edition.isFamily) {
+                store.logEvent(UsageStore.EV_SETTINGS)
+                toast("Protégé par le code parent")
+            } else toast("Mode strict : déverrouille d'abord dans ReelsGuard")
         }
         return true
     }
@@ -613,7 +772,18 @@ class ReelsGuardService : AccessibilityService() {
             "com.touchtype.swiftkey",
         )
 
+        /** Textes qui n'apparaissent qu'en navigation privée (ou dans le menu pour l'ouvrir). */
+        private val PRIVATE_KEYS = listOf(
+            "vous êtes en navigation privée", "onglet de navigation privée", "nouvel onglet privé", "fenêtre privée",
+            "mythes courants sur la navigation privée", "mode secret", "navigation inprivate", "inprivate",
+            "onglets privés", "you've gone incognito", "you’ve gone incognito", "new incognito tab",
+            "new private tab", "private window", "common myths about private browsing", "secret mode",
+            "private tabs", "new inprivate tab",
+        )
+
         private val SETTINGS_PACKAGES = setOf(
+            "com.samsung.android.lool", "com.samsung.android.sm", "com.samsung.android.sm_cn",
+            "com.miui.securitycenter", "com.coloros.safecenter", "com.huawei.systemmanager",
             "com.android.settings",
             "com.samsung.accessibility",
             "com.google.android.packageinstaller",

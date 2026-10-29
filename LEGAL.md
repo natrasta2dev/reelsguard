@@ -32,6 +32,10 @@ ReelsGuard est fourni « tel quel », sans garantie d'aucune sorte, conformémen
 
 Voir la [politique de confidentialité](PRIVACY.md). En résumé : aucune donnée n'est collectée ni transmise à l'éditeur.
 
+## Édition Famille (contrôle parental)
+
+ReelsGuard Famille doit être installé et configuré par le parent ou le responsable légal de l'enfant qui utilise l'appareil ; le parent le confirme lors de la configuration et s'engage à informer l'enfant. L'application reste visible et affiche une notification permanente « Contrôle parental actif ». Elle ne doit pas être utilisée pour surveiller un adulte ou un tiers à son insu, ce qui serait illégal. Ses protections (pages des Paramètres, anti-désinstallation, navigation privée) ne sont pas infaillibles : mode sans échec, réinitialisation de l'appareil ou outils de développement permettent de les contourner.
+
 ## Santé et bien-être
 
 ReelsGuard est un outil d'aide à la maîtrise du temps d'écran. Il ne constitue ni un dispositif médical, ni un contrôle parental, et ne remplace pas l'avis d'un professionnel de santé.

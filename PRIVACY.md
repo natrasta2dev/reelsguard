@@ -45,6 +45,17 @@ Les liens (site Cod'Apps, GitHub, téléchargement d'une mise à jour) s'ouvrent
 
 Les notifications (temps restant, mises à jour) sont générées localement, sans serveur.
 
+## Édition Famille (contrôle parental)
+
+ReelsGuard Famille est installé et configuré par un parent sur le téléphone d'un enfant. En plus de ce qui précède :
+
+- **Code parent et code de secours** : stockés sur l'appareil uniquement sous forme d'empreinte chiffrée (PBKDF2), jamais en clair.
+- **Données de l'enfant** : temps passé par app et par jour, apps limitées ou autorisées, plages de couvre-feu et de temps scolaire, et compteurs du rapport (pages protégées refermées, navigation privée bloquée, demandes de temps, codes erronés). Elles restent sur l'appareil 30 jours au plus et ne sont **jamais transmises** : il n'y a ni compte, ni serveur.
+- **Liste des apps installées** : lue sur l'appareil pour que le parent choisisse celles à limiter ou à autoriser, jamais envoyée.
+- **Navigation privée** : l'interface du navigateur (pas le contenu des pages) est examinée pour reconnaître ce mode et le fermer.
+- **Transparence** : l'application reste visible et affiche une notification permanente « Contrôle parental actif ». Elle ne lit ni messages, ni photos, ni mots de passe.
+- Le parent confirme, à l'installation, être le parent ou le responsable légal de l'enfant et l'avoir informé.
+
 ## Tes droits
 
 Tu peux supprimer toutes les données à tout moment : Paramètres Android → Applications → ReelsGuard → Stockage → *Effacer les données*, ou en désinstallant l'application.

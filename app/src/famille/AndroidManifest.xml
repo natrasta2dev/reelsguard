@@ -1,0 +1,42 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Composants propres à l'édition Famille (fusionnés avec le manifeste principal). -->
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <!-- Liste des apps installées pour que le parent choisisse celles à limiter -->
+    <queries>
+        <intent>
+            <action android:name="android.intent.action.MAIN" />
+            <category android:name="android.intent.category.LAUNCHER" />
+        </intent>
+        <intent>
+            <action android:name="android.intent.action.MAIN" />
+            <category android:name="android.intent.category.HOME" />
+        </intent>
+        <intent>
+            <action android:name="android.intent.action.VIEW" />
+            <category android:name="android.intent.category.BROWSABLE" />
+            <data android:scheme="https" />
+        </intent>
+    </queries>
+
+    <application>
+        <activity android:name=".FamilySetupActivity" android:exported="false" />
+        <activity android:name=".FamilyActivity" android:exported="false"
+            android:windowSoftInputMode="adjustResize" />
+        <activity android:name=".RequestTimeActivity" android:exported="false"
+            android:excludeFromRecents="true" android:taskAffinity="" />
+
+        <receiver
+            android:name=".AdminReceiver"
+            android:exported="true"
+            android:label="@string/app_name"
+            android:permission="android.permission.BIND_DEVICE_ADMIN">
+            <meta-data
+                android:name="android.app.device_admin"
+                android:resource="@xml/device_admin" />
+            <intent-filter>
+                <action android:name="android.app.action.DEVICE_ADMIN_ENABLED" />
+            </intent-filter>
+        </receiver>
+    </application>
+</manifest>

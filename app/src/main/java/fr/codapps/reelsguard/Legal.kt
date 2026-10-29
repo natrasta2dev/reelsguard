@@ -98,9 +98,46 @@ object Legal {
             ),
             Section(
                 "Santé et bien-être",
-                "ReelsGuard est un outil d'aide à la maîtrise du temps d'écran. Il ne constitue ni un dispositif " +
-                    "médical, ni un contrôle parental, et ne remplace pas l'avis d'un professionnel de santé."
+                if (Edition.isFamily)
+                    "ReelsGuard Famille est un outil d'aide à la maîtrise du temps d'écran des enfants. Il ne constitue pas " +
+                        "un dispositif médical et ne remplace ni le dialogue avec l'enfant, ni l'avis d'un professionnel de santé."
+                else
+                    "ReelsGuard est un outil d'aide à la maîtrise du temps d'écran. Il ne constitue ni un dispositif " +
+                        "médical, ni un contrôle parental, et ne remplace pas l'avis d'un professionnel de santé."
             ),
-        )
+        ) + if (Edition.isFamily) familySections() else emptyList()
     }
+
+    /** Sections propres à l'édition Famille. */
+    private fun familySections() = listOf(
+        Section(
+            "Contrôle parental : rôle du parent",
+            "ReelsGuard Famille doit être installé et configuré par le parent ou le responsable légal de l'enfant qui " +
+                "utilise l'appareil. Lors de la configuration, le parent confirme cette qualité et s'engage à informer " +
+                "l'enfant de la présence de l'application. Le parent reste seul responsable de l'usage qu'il en fait."
+        ),
+        Section(
+            "Transparence envers l'enfant",
+            "L'application n'est jamais cachée : son icône reste visible et une notification permanente « Contrôle " +
+                "parental actif » est affichée. Elle ne lit ni les messages, ni les photos, ni les mots de passe, et " +
+                "n'enregistre aucun contenu des écrans. Elle ne doit pas être utilisée pour surveiller un adulte ou un " +
+                "tiers à son insu : ce serait illégal."
+        ),
+        Section(
+            "Données de l'enfant",
+            "Toutes les données (temps passé par app et par jour, réglages, nombre de tentatives de contournement, " +
+                "demandes de temps) restent sur l'appareil, pendant 30 jours au plus. Il n'y a ni compte, ni serveur : " +
+                "rien n'est transmis à l'éditeur ni à des tiers. Le code parent et le code de secours ne sont stockés " +
+                "que sous forme d'empreinte chiffrée. Les adresses des pages visitées dans un navigateur sont comparées " +
+                "sur l'appareil puis oubliées. Désinstaller l'application (avec le code parent) efface tout."
+        ),
+        Section(
+            "Fonctionnement des protections",
+            "Avec le code parent, ReelsGuard Famille ferme les pages des Paramètres qui permettraient de le désactiver, " +
+                "de forcer son arrêt, d'effacer ses données ou de le désinstaller. Il peut être déclaré administrateur " +
+                "de l'appareil, sans aucun pouvoir sur le téléphone, uniquement pour empêcher sa désinstallation. " +
+                "Il ferme aussi la navigation privée des navigateurs. Ces protections ne sont pas infaillibles " +
+                "(mode sans échec, réinitialisation de l'appareil, outils de développement)."
+        ),
+    )
 }

@@ -81,8 +81,10 @@ class SettingsActivity : Activity() {
         // Verrou du mode strict
         lockText = ui.text("", 13f, c.muted, ui.regular)
         root.addView(ui.centered(lockText, top = 16))
-        lockButton = ui.pill("Déverrouiller (2 min)", filled = c.accent, textColor = 0xFFFFFFFF.toInt()) {
-            schedule.requestUnlock(); refreshLock()
+        lockButton = ui.pill(if (Edition.isFamily) "Code parent" else "Déverrouiller (2 min)",
+            filled = c.accent, textColor = 0xFFFFFFFF.toInt()) {
+            if (Edition.isFamily) PinDialog.require(this, "Modifier les réglages") { wasLocked = null; refreshLock() }
+            else { schedule.requestUnlock(); refreshLock() }
         }
         root.addView(ui.centered(lockButton, top = 12))
 
@@ -232,7 +234,18 @@ class SettingsActivity : Activity() {
         delayRow.addView(ui.text("s", 13f, c.muted, ui.regular), ui.lp(-2, -2, left = 8))
         content.addView(ui.centered(delayRow, top = 12))
 
-        // Mode strict
+        // Mode strict (édition perso) ; dans l'édition Famille, le code parent le remplace
+        if (Edition.isFamily) {
+            strictChip = ui.chip("") {}
+            content.addView(ui.centered(ui.section("Contrôle parental"), top = 28))
+            content.addView(ui.centered(ui.pill("Espace parent", filled = c.fg, textColor = c.bg) {
+                startActivity(android.content.Intent(this, FamilyActivity::class.java))
+            }, top = 12))
+            content.addView(ui.centered(ui.text(
+                "Rapport, couvre-feu, temps scolaire, apps entières, apps autorisées, protection et code parent.",
+                12f, c.muted, ui.regular).apply { setLineSpacing(0f, 1.2f) }, top = 10))
+            return
+        }
         content.addView(ui.centered(ui.section("Mode strict"), top = 28))
         strictChip = ui.chip("") {
             schedule.strictEnabled = !schedule.strictEnabled
@@ -364,6 +377,13 @@ class SettingsActivity : Activity() {
         if (locked != wasLocked) {
             wasLocked = locked
             applyLock(locked)
+        }
+        if (Edition.isFamily) {
+            lockText.visibility = View.VISIBLE
+            lockButton.visibility = if (locked) View.VISIBLE else View.GONE
+            lockText.text = if (locked) "Réglages protégés par le code parent"
+            else "Session parent jusqu'à " + SimpleDateFormat("HH:mm", Locale.FRANCE).format(Date(ParentLock.sessionUntil(this)))
+            return
         }
         when {
             !schedule.strictEnabled -> {

@@ -10,7 +10,7 @@ import java.time.LocalTime
  *  - plages horaires (aucune = toute la journée) où les vidéos courtes sont autorisées ;
  *  - pause forcée, délai avant ouverture, mode strict.
  */
-class Schedule(context: Context) {
+class Schedule(private val context: Context) {
 
     private val prefs = context.getSharedPreferences("reelsguard_schedule", Context.MODE_PRIVATE)
 
@@ -119,6 +119,8 @@ class Schedule(context: Context) {
 
     /** Vrai si le mode strict est actif et qu'aucun déverrouillage n'est en cours. */
     fun isLocked(): Boolean {
+        // Édition Famille : tout est verrouillé, sauf pendant une session parent (code saisi).
+        if (Edition.isFamily) return ParentLock.isSetUp(context) && !ParentLock.sessionActive(context)
         if (!strictEnabled) return false
         val now = System.currentTimeMillis()
         val opensAt = unlockReq + UNLOCK_WAIT_MS

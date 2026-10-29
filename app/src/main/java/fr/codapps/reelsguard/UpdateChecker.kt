@@ -99,15 +99,27 @@ object UpdateChecker {
         }
     }
 
+    /**
+     * Édition perso : dernière release (tags « vX.Y.Z »).
+     * Édition Famille : release la plus récente dont le tag commence par « famille-v ».
+     */
     private fun fetch(): Release {
-        val conn = (URL(API).openConnection() as HttpURLConnection).apply {
+        val prefix = BuildConfig.RELEASE_TAG_PREFIX
+        val url = if (Edition.isFamily) "https://api.github.com/repos/$REPO/releases?per_page=30" else API
+        val conn = (URL(url).openConnection() as HttpURLConnection).apply {
             connectTimeout = 10_000
             readTimeout = 10_000
             setRequestProperty("Accept", "application/vnd.github+json")
             setRequestProperty("User-Agent", "ReelsGuard/${currentVersion()}")
         }
         try {
-            val json = JSONObject(conn.inputStream.bufferedReader().use { it.readText() })
+            val body = conn.inputStream.bufferedReader().use { it.readText() }
+            val json = if (Edition.isFamily) {
+                val arr = org.json.JSONArray(body)
+                (0 until arr.length()).map { arr.getJSONObject(it) }.firstOrNull {
+                    !it.optBoolean("draft") && !it.optBoolean("prerelease") && it.optString("tag_name").startsWith(prefix)
+                } ?: error("aucune release Famille")
+            } else JSONObject(body)
             val assets = json.optJSONArray("assets")
             var apk: String? = null
             if (assets != null) for (i in 0 until assets.length()) {
@@ -115,7 +127,7 @@ object UpdateChecker {
                 if (a.optString("name").endsWith(".apk")) { apk = a.optString("browser_download_url"); break }
             }
             return Release(
-                version = json.getString("tag_name").removePrefix("v"),
+                version = json.getString("tag_name").removePrefix(prefix),
                 pageUrl = json.optString("html_url", REPO_URL),
                 apkUrl = apk,
                 notes = json.optString("body", ""),

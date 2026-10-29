@@ -31,6 +31,18 @@ sans modifier les applications et sans collecter aucune donnée.
 - **Widget** d'écran d'accueil et **notification discrète** du temps restant.
 - **Mises à jour** : notification pour une version mineure, mise à jour obligatoire pour une version majeure.
 
+## Deux éditions
+
+| | **ReelsGuard** | **ReelsGuard Famille** |
+|---|---|---|
+| Pour qui | Toi, pour arrêter de scroller | Un parent, pour le téléphone de son enfant |
+| Protection des réglages | Mode strict (attente de 2 min) | Code parent |
+| Anti-contournement | Pages Paramètres protégées en mode strict | Paramètres, désinstallation, forcer l'arrêt, navigation privée |
+| En plus | — | N'importe quelle app, couvre-feu, temps scolaire, demande de temps, rapport |
+| Téléchargement | Releases `vX.Y.Z` | Releases `famille-vX.Y.Z` (branche `ReelGuardFamille`) |
+
+Les deux éditions partagent le même code (variantes Gradle `perso` et `famille`), peuvent être installées côte à côte, et ne collectent aucune donnée. Détails de l'édition Famille : [CHANGELOG-FAMILLE.md](CHANGELOG-FAMILLE.md).
+
 ## Apps prises en charge
 
 | App | Ce qui est limité |
@@ -101,7 +113,7 @@ Prérequis : Android Studio (ou JDK 17 + Android SDK 34 + Gradle 8.7).
 ```bash
 git clone https://github.com/natrasta2dev/reelsguard.git
 cd reelsguard
-gradle assembleDebug   # APK : app/build/outputs/apk/debug/
+gradle assemblePersoDebug assembleFamilleDebug   # APK : app/build/outputs/apk/<édition>/debug/
 ```
 
 La version debug s'installe à côté de la version officielle (identifiant `fr.codapps.reelsguard.debug`).

@@ -68,7 +68,12 @@ class MainActivity : Activity() {
         // Titre discret (appui long = diagnostic)
         root.addView(ui.centered(ui.text("REELSGUARD", 12f, c.muted, ui.medium).apply {
             letterSpacing = 0.25f
-            setOnLongClickListener { showDiagnostics(); true }
+            setOnLongClickListener {
+                // Le diagnostic peut contenir des textes de l'écran : réservé au parent dans l'édition Famille
+                if (Edition.isFamily) PinDialog.require(this@MainActivity, "Diagnostic") { showDiagnostics() }
+                else showDiagnostics()
+                true
+            }
         }))
 
         bigNumber = ui.text("", 96f, c.fg, ui.light)
@@ -104,12 +109,21 @@ class MainActivity : Activity() {
         root.addView(ui.centered(notifBanner, top = 16))
 
         // Actions
+        if (Edition.isFamily) {
+            root.addView(ui.centered(ui.pill("Demander plus de temps", filled = c.accent, textColor = Color.WHITE) {
+                startActivity(Intent(this, RequestTimeActivity::class.java))
+            }, top = 44))
+            root.addView(ui.centered(ui.pill("Espace parent", filled = c.fg, textColor = c.bg) {
+                startActivity(Intent(this, FamilyActivity::class.java))
+            }, top = 12))
+        }
         root.addView(ui.centered(ui.pill("Réglages", filled = c.fg, textColor = c.bg) {
             startActivity(Intent(this, SettingsActivity::class.java))
-        }, top = 44))
+        }, top = if (Edition.isFamily) 12 else 44))
 
         serviceButton = ui.pill("", filled = null, textColor = c.fg) {
-            startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS))
+            val open = { startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS)) }
+            if (Edition.isFamily && ParentLock.isSetUp(this)) PinDialog.require(this, "Code parent") { open() } else open()
         }
         root.addView(ui.centered(serviceButton, top = 12))
 
@@ -145,6 +159,11 @@ class MainActivity : Activity() {
 
     override fun onResume() {
         super.onResume()
+        // Édition Famille : accord du parent et code parent avant tout le reste
+        if (Edition.isFamily && !ParentLock.isSetUp(this)) {
+            startActivity(Intent(this, FamilySetupActivity::class.java))
+            return
+        }
         handler.post(ticker)
         RemainingWidget.update(this)
         applyUpdateState()
@@ -216,6 +235,10 @@ class MainActivity : Activity() {
      * on redemande si c'est encore possible, sinon on ouvre directement le réglage des notifications.
      */
     private fun fixNotifications() {
+        if (Edition.isFamily && ParentLock.isSetUp(this) && !ParentLock.sessionActive(this)) {
+            PinDialog.require(this, "Code parent") { fixNotifications() }
+            return
+        }
         if (Build.VERSION.SDK_INT >= 33 &&
             checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED &&
             shouldShowRequestPermissionRationale(Manifest.permission.POST_NOTIFICATIONS)
@@ -328,10 +351,14 @@ class MainActivity : Activity() {
             }
             setPadding(ui.dp(20), ui.dp(22), ui.dp(20), ui.dp(6))
         }
-        val appSettings = {
+        // Édition Famille : ces pages sont protégées, le code parent ouvre une session de 10 min
+        fun guarded(open: () -> Unit): () -> Unit = {
+            if (Edition.isFamily && ParentLock.isSetUp(this)) PinDialog.require(this, "Code parent") { open() } else open()
+        }
+        val appSettings = guarded {
             startActivity(Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS).setData(Uri.parse("package:$packageName")))
         }
-        val a11y = { startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS)) }
+        val a11y = guarded { startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS)) }
         val restricted = Build.VERSION.SDK_INT >= 33
         val steps = mutableListOf<Step>()
         if (restricted) {
@@ -353,6 +380,18 @@ class MainActivity : Activity() {
             (if (restricted) "Retourne dans " else "") +
                 "Accessibilité → Applications installées → ReelsGuard → active l'interrupteur, puis appuie sur « Autoriser ».",
             "Ouvrir l'accessibilité", a11y)
+        if (Edition.isFamily) steps += Step(
+            "Activer l'anti-désinstallation",
+            "Android demandera alors de désactiver cette protection avant toute désinstallation, " +
+                "et cette page est protégée par le code parent.",
+            "Activer (code parent)", {
+                PinDialog.require(this, "Anti-désinstallation") {
+                    startActivity(Intent(android.app.admin.DevicePolicyManager.ACTION_ADD_DEVICE_ADMIN)
+                        .putExtra(android.app.admin.DevicePolicyManager.EXTRA_DEVICE_ADMIN, AdminReceiver.component(this))
+                        .putExtra(android.app.admin.DevicePolicyManager.EXTRA_ADD_EXPLANATION,
+                            "Empêche la désinstallation de ReelsGuard Famille sans le code parent."))
+                }
+            })
         steps += Step(
             "Batterie non restreinte",
             "Infos de l'appli → Batterie → « Non restreinte ». Sans ça, Android peut mettre ReelsGuard en veille " +

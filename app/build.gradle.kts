@@ -11,10 +11,31 @@ android {
         applicationId = "fr.codapps.reelsguard"
         minSdk = 26
         targetSdk = 34
-        // Version : MAJEUR.MINEUR.CORRECTIF (une hausse du MAJEUR rend la mise à jour obligatoire).
-        // Le tag Git de la release doit être identique, préfixé d'un « v » (ex. v1.0.0).
-        versionCode = 4
-        versionName = "1.1.1"
+    }
+
+    // Deux éditions à partir du même code :
+    //  - perso   : ReelsGuard, pour se limiter soi-même (mode strict avec attente) ;
+    //  - famille : ReelsGuard Famille, contrôle parental protégé par un code parent.
+    // Version : MAJEUR.MINEUR.CORRECTIF (une hausse du MAJEUR rend la mise à jour obligatoire).
+    flavorDimensions += "edition"
+    productFlavors {
+        create("perso") {
+            dimension = "edition"
+            versionCode = 4
+            versionName = "1.1.1"
+            resValue("string", "app_name", "ReelsGuard")
+            buildConfigField("boolean", "FAMILLE", "false")
+            buildConfigField("String", "RELEASE_TAG_PREFIX", "\"v\"")
+        }
+        create("famille") {
+            dimension = "edition"
+            applicationIdSuffix = ".famille"
+            versionCode = 1
+            versionName = "1.0.0"
+            resValue("string", "app_name", "ReelsGuard Famille")
+            buildConfigField("boolean", "FAMILLE", "true")
+            buildConfigField("String", "RELEASE_TAG_PREFIX", "\"famille-v\"")
+        }
     }
 
     // Signature des releases : la clé n'est jamais dans le dépôt.

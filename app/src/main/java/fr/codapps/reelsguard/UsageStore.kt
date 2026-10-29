@@ -36,7 +36,7 @@ class UsageStore(context: Context) {
             if (pending != Int.MIN_VALUE) e.putInt(k, pending).remove("pending_$k")
         }
         val oldest = today().minusDays(HISTORY_DAYS.toLong())
-        prefs.all.keys.filter { it.startsWith("u_") || it.startsWith("l_") }.forEach { key ->
+        prefs.all.keys.filter { it.startsWith("u_") || it.startsWith("l_") || it.startsWith("b_") || it.startsWith("e_") }.forEach { key ->
             val date = runCatching { LocalDate.parse(key.substring(2, 12)) }.getOrNull()
             if (date != null && date.isBefore(oldest)) e.remove(key)
         }
@@ -60,7 +60,8 @@ class UsageStore(context: Context) {
     fun limitFor(d: LocalDate): Int =
         if (isWeekend(d) && weekendLimit >= 0) weekendLimit else weekdayLimit
 
-    val limitMinutes: Int get() = limitFor(today())
+    /** Limite du jour, temps bonus accordé par le parent compris (édition Famille). */
+    val limitMinutes: Int get() = limitFor(today()) + bonusToday()
 
     /**
      * Change une limite (weekend = true pour le week-end ; -1 = « comme la semaine »).
@@ -126,9 +127,31 @@ class UsageStore(context: Context) {
     fun remainingFor(rule: AppRule): Long {
         val q = appQuota(rule)
         if (q < 0) return remainingMs
-        if (q == 0) return 0L
-        return minOf(remainingMs, (q * 60_000L - usedToday(rule)).coerceAtLeast(0L))
+        val qq = q + bonusToday() // 0 = bloquée, sauf temps bonus accordé par le parent
+        if (qq <= 0) return 0L
+        return minOf(remainingMs, (qq * 60_000L - usedToday(rule)).coerceAtLeast(0L))
     }
+
+    /** Temps passé dans une app entière (édition Famille) : ne compte pas dans la limite des vidéos courtes. */
+    fun addAppOnlyUsage(rule: AppRule, deltaMs: Long) {
+        if (deltaMs <= 0) return
+        rolloverIfNeeded()
+        prefs.edit().putLong(usedKey(today(), rule), usedOn(today(), rule) + deltaMs).apply()
+    }
+
+    // ---------- temps bonus et journal (édition Famille) ----------
+
+    fun bonusToday(): Int = prefs.getInt("b_${today()}", 0)
+
+    fun addBonus(minutes: Int) = prefs.edit().putInt("b_${today()}", bonusToday() + minutes.coerceIn(0, 240)).apply()
+
+    /** Compte un événement du jour (tentative de contournement, demande de temps…). */
+    fun logEvent(type: String) {
+        val k = "e_${today()}_$type"
+        prefs.edit().putInt(k, prefs.getInt(k, 0) + 1).apply()
+    }
+
+    fun eventsOn(d: LocalDate, type: String): Int = prefs.getInt("e_${d}_$type", 0)
 
     // ---------- historique et série ----------
 
@@ -174,6 +197,11 @@ class UsageStore(context: Context) {
         private const val KEY_WD = "limit_wd"
         private const val KEY_WE = "limit_we"
         private const val HISTORY_DAYS = 30
+        const val EV_SETTINGS = "settings"      // page Paramètres protégée refermée
+        const val EV_PRIVATE = "private"        // navigation privée bloquée
+        const val EV_PIN_FAIL = "pin"           // code parent erroné
+        const val EV_REQUEST = "request"        // demande de temps supplémentaire
+        const val EV_RESTRICTED = "restricted"  // app ouverte pendant le couvre-feu / temps scolaire
         const val DEFAULT_LIMIT_MIN = 60
     }
 }
