@@ -152,6 +152,8 @@ class SettingsActivity : Activity() {
         super.onResume()
         // Mise à jour obligatoire : retour à l'accueil, qui affiche l'écran de mise à jour.
         if (UpdateChecker.isUpdateRequired(this)) { finish(); return }
+        // Édition Famille : réglages ouverts uniquement depuis l'espace parent, pendant la session parent.
+        if (Edition.isFamily && ParentLock.isSetUp(this) && !ParentLock.sessionActive(this)) { finish(); return }
         wasLocked = null
         handler.post(ticker)
         refreshChips()
@@ -236,14 +238,7 @@ class SettingsActivity : Activity() {
 
         // Mode strict (édition perso) ; dans l'édition Famille, le code parent le remplace
         if (Edition.isFamily) {
-            strictChip = ui.chip("") {}
-            content.addView(ui.centered(ui.section("Contrôle parental"), top = 28))
-            content.addView(ui.centered(ui.pill("Espace parent", filled = c.fg, textColor = c.bg) {
-                startActivity(android.content.Intent(this, FamilyActivity::class.java))
-            }, top = 12))
-            content.addView(ui.centered(ui.text(
-                "Rapport, couvre-feu, temps scolaire, apps entières, apps autorisées, protection et code parent.",
-                12f, c.muted, ui.regular).apply { setLineSpacing(0f, 1.2f) }, top = 10))
+            strictChip = ui.chip("") {} // le code parent remplace le mode strict
             return
         }
         content.addView(ui.centered(ui.section("Mode strict"), top = 28))

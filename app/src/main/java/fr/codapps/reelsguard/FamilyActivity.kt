@@ -161,6 +161,15 @@ class FamilyActivity : Activity() {
             rows.forEach { (n, v) -> v.visibility = if (q.isEmpty() || q in n) View.VISIBLE else View.GONE }
         })
 
+        // ---------- réglages des vidéos courtes ----------
+        root.addView(ui.centered(ui.section("Vidéos courtes et réseaux"), top = 32))
+        root.addView(ui.centered(ui.pill("Réglages", filled = c.fg, textColor = c.bg) {
+            startActivity(Intent(this, SettingsActivity::class.java))
+        }, top = 12))
+        root.addView(ui.centered(ui.text(
+            "Limite par jour, apps surveillées et minuteur par app, jours, horaires, pause forcée, écran « Respire ».",
+            12f, c.muted, ui.regular).apply { setLineSpacing(0f, 1.2f) }, top = 10))
+
         // ---------- protection ----------
         root.addView(ui.centered(ui.section("Protection"), top = 32))
         adminButton = ui.pill("", filled = null, textColor = c.fg) {

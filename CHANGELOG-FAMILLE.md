@@ -3,6 +3,11 @@
 Édition contrôle parental de ReelsGuard, développée sur la branche `ReelGuardFamille`.
 Les releases portent le tag `famille-vX.Y.Z`. Une hausse du numéro **majeur** rend la mise à jour obligatoire.
 
+## [1.0.1] - 2026-10-29
+
+### Modifié
+- Les réglages ne sont plus accessibles depuis l'accueil : ils se trouvent uniquement dans l'espace parent (code parent requis). L'enfant ne voit que son temps restant et « Demander plus de temps ».
+
 ## [1.0.0] - 2026-10-29
 
 Première version de l'édition Famille. Elle reprend tout ReelsGuard (limites, apps, versions web, horaires, pause, « Respire », historique) et ajoute :
@@ -29,4 +34,5 @@ Première version de l'édition Famille. Elle reprend tout ReelsGuard (limites, 
 - Écrans de blocage adaptés aux enfants.
 - Mentions légales et confidentialité propres à l'édition Famille ; tout reste sur l'appareil, sans compte ni serveur.
 
+[1.0.1]: https://github.com/natrasta2dev/reelsguard/releases/tag/famille-v1.0.1
 [1.0.0]: https://github.com/natrasta2dev/reelsguard/releases/tag/famille-v1.0.0

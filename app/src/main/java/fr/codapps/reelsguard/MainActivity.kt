@@ -117,9 +117,10 @@ class MainActivity : Activity() {
                 startActivity(Intent(this, FamilyActivity::class.java))
             }, top = 12))
         }
-        root.addView(ui.centered(ui.pill("Réglages", filled = c.fg, textColor = c.bg) {
+        // Édition Famille : pas de bouton Réglages, ils se trouvent uniquement dans l'espace parent
+        if (!Edition.isFamily) root.addView(ui.centered(ui.pill("Réglages", filled = c.fg, textColor = c.bg) {
             startActivity(Intent(this, SettingsActivity::class.java))
-        }, top = if (Edition.isFamily) 12 else 44))
+        }, top = 44))
 
         serviceButton = ui.pill("", filled = null, textColor = c.fg) {
             val open = { startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS)) }
@@ -403,9 +404,11 @@ class MainActivity : Activity() {
                 "le bouton ouvre directement le réglage : active « Autoriser les notifications ».",
             "Activer les notifications", { fixNotifications() })
         steps += Step(
-            "Régler ta limite",
-            "Dans Réglages : minutes par jour en semaine et le week-end, apps, jours, horaires, pause, délai et mode strict.",
-            null, null)
+            if (Edition.isFamily) "Tout régler dans l'espace parent" else "Régler ta limite",
+            if (Edition.isFamily) "Limites des vidéos courtes, apps, jours, horaires, couvre-feu, temps scolaire, apps entières et protection."
+            else "Dans Réglages : minutes par jour en semaine et le week-end, apps, jours, horaires, pause, délai et mode strict.",
+            if (Edition.isFamily) "Ouvrir l'espace parent" else null,
+            if (Edition.isFamily) ({ startActivity(Intent(this, FamilyActivity::class.java)) }) else null)
 
         steps.forEachIndexed { i, st -> box.addView(stepView(i + 1, st)) }
         if (!restricted) box.addView(ui.text("Ton Android n'a pas besoin des étapes de déblocage : commence directement par activer le service.",
