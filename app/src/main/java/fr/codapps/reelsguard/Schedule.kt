@@ -18,7 +18,8 @@ class Schedule(context: Context) {
 
     // ---------- apps ----------
 
-    fun isAppEnabled(rule: AppRule) = prefs.getBoolean("app_${rule.name}", true)
+    /** Par défaut, seuls Instagram, YouTube et TikTok sont surveillés ; les autres apps sont à activer. */
+    fun isAppEnabled(rule: AppRule) = prefs.getBoolean("app_${rule.name}", rule in DEFAULT_APPS)
 
     fun setAppEnabled(rule: AppRule, on: Boolean) = prefs.edit().putBoolean("app_${rule.name}", on).apply()
 
@@ -138,6 +139,7 @@ class Schedule(context: Context) {
     }
 
     companion object {
+        private val DEFAULT_APPS = setOf(AppRules.INSTAGRAM, AppRules.YOUTUBE, AppRules.TIKTOK)
         private const val KEY_DAYS = "days"
         private const val KEY_WINDOWS = "windows"
         const val UNLOCK_WAIT_MS = 2 * 60_000L

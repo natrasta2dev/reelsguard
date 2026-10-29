@@ -44,7 +44,7 @@ sans modifier les applications et sans collecter aucune donnée.
 | Reddit | Lecteur vidéo plein écran |
 | Pinterest, Twitch, Threads | L'app entière |
 
-Chaque app peut être activée ou désactivée dans les réglages.
+Par défaut, seuls **Instagram, YouTube et TikTok** sont surveillés ; les autres apps s'activent en un appui dans les réglages.
 
 **Versions web** : ces sites sont aussi limités dans le navigateur (Chrome, Samsung Internet, Firefox, Edge, Brave, Opera, DuckDuckGo, Vivaldi, Kiwi), avec la même limite que les apps — par exemple `youtube.com/shorts`, `instagram.com/reels` ou `tiktok.com`. L'adresse de la page est seulement comparée sur le téléphone, jamais enregistrée ni envoyée.
 

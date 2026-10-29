@@ -3,6 +3,11 @@
 Toutes les évolutions notables de ReelsGuard sont listées ici.
 Le projet suit le [versionnage sémantique](https://semver.org/lang/fr/) : une hausse du numéro **majeur** rend la mise à jour obligatoire dans l'application.
 
+## [1.1.1] - 2026-10-29
+
+### Modifié
+- Par défaut, seuls Instagram, YouTube et TikTok sont surveillés. Facebook, Snapchat, X, Reddit, Pinterest, Twitch et Threads restent disponibles et s'activent dans Réglages → Apps.
+
 ## [1.1.0] - 2026-10-29
 
 ### Ajouté
@@ -49,6 +54,7 @@ Première version publique.
 - Mises à jour : notification pour une version mineure, écran obligatoire pour une version majeure.
 - Mode d'emploi intégré, diagnostic partageable, mentions légales et politique de confidentialité intégrées.
 
+[1.1.1]: https://github.com/natrasta2dev/reelsguard/releases/tag/v1.1.1
 [1.1.0]: https://github.com/natrasta2dev/reelsguard/releases/tag/v1.1.0
 [1.0.1]: https://github.com/natrasta2dev/reelsguard/releases/tag/v1.0.1
 [1.0.0]: https://github.com/natrasta2dev/reelsguard/releases/tag/v1.0.0
