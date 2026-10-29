@@ -67,5 +67,5 @@ class FamilySetupActivity : Activity() {
     }
 
     @Deprecated("Impossible de quitter la configuration sans la terminer")
-    override fun onBackPressed() = moveTaskToBack(true)
+    override fun onBackPressed() { moveTaskToBack(true) }
 }
