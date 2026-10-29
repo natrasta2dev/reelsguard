@@ -19,6 +19,7 @@ class UsageStore(context: Context) {
     init {
         if (!prefs.contains(KEY_INSTALL)) prefs.edit().putString(KEY_INSTALL, today().toString()).apply()
         migrateV1()
+        migrateQuotas()
     }
 
     private fun today(): LocalDate = LocalDate.now()
@@ -81,10 +82,19 @@ class UsageStore(context: Context) {
 
     // ---------- quota par app ----------
 
-    fun appQuota(rule: AppRule): Int = prefs.getInt("q_${rule.name}", 0)
+    /** Minuteur propre à l'app : -1 = aucun (seule la limite commune compte), 0 = app bloquée. */
+    fun appQuota(rule: AppRule): Int = prefs.getInt("q_${rule.name}", -1)
 
     fun setAppQuota(rule: AppRule, minutes: Int) =
-        prefs.edit().putInt("q_${rule.name}", minutes.coerceIn(0, 24 * 60)).apply()
+        prefs.edit().putInt("q_${rule.name}", if (minutes < 0) -1 else minutes.coerceAtMost(24 * 60)).apply()
+
+    /** Avant, 0 voulait dire « aucun minuteur » : on convertit une seule fois les anciennes valeurs. */
+    private fun migrateQuotas() {
+        if (prefs.getBoolean("quota_v2", false)) return
+        val e = prefs.edit()
+        prefs.all.forEach { (k, v) -> if (k.startsWith("q_") && v == 0) e.putInt(k, -1) }
+        e.putBoolean("quota_v2", true).apply()
+    }
 
     // ---------- temps utilisé ----------
 
@@ -115,7 +125,8 @@ class UsageStore(context: Context) {
     /** Temps restant pour une app : le plus petit entre la limite commune et son quota propre. */
     fun remainingFor(rule: AppRule): Long {
         val q = appQuota(rule)
-        if (q <= 0) return remainingMs
+        if (q < 0) return remainingMs
+        if (q == 0) return 0L
         return minOf(remainingMs, (q * 60_000L - usedToday(rule)).coerceAtLeast(0L))
     }
 

@@ -176,7 +176,7 @@ class SettingsActivity : Activity() {
 
         // Apps + quota propre
         content.addView(ui.centered(ui.section("Apps et minuteur par app"), top = 32))
-        content.addView(ui.centered(ui.text("Min/J pour cette app, en plus de la limite commune. Vide = aucun.",
+        content.addView(ui.centered(ui.text("Min/J pour cette app, en plus de la limite commune.\nVide = pas de minuteur · 0 = app bloquée.",
             12f, c.muted, ui.regular), top = 6))
         MainActivity.APPS.forEach { (rule, name) ->
             val r = ui.row()
@@ -259,7 +259,7 @@ class SettingsActivity : Activity() {
         weekdayField.setText((store.pending(false) ?: store.weekdayLimit).toString())
         val we = store.pending(true) ?: store.weekendLimit
         weekendField.setText(if (we >= 0) we.toString() else "")
-        quotaFields.forEach { (rule, f) -> store.appQuota(rule).let { f.setText(if (it > 0) "$it" else "") } }
+        quotaFields.forEach { (rule, f) -> store.appQuota(rule).let { f.setText(if (it >= 0) "$it" else "") } }
         pauseAfterField.setText("${schedule.pauseAfterMin}")
         pauseLenField.setText("${schedule.pauseLengthMin}")
         delayField.setText("${schedule.delaySeconds}")
@@ -278,7 +278,7 @@ class SettingsActivity : Activity() {
         }
         val weNow = store.setLimit(weekendField.text.toString().toIntOrNull() ?: -1, weekend = true)
         val wdNow = store.setLimit(wd, weekend = false)
-        quotaFields.forEach { (rule, f) -> store.setAppQuota(rule, f.text.toString().trim().toIntOrNull() ?: 0) }
+        quotaFields.forEach { (rule, f) -> store.setAppQuota(rule, f.text.toString().trim().toIntOrNull() ?: -1) }
         pauseAfterField.text.toString().toIntOrNull()?.let { schedule.pauseAfterMin = it }
         pauseLenField.text.toString().toIntOrNull()?.let { schedule.pauseLengthMin = it }
         delayField.text.toString().toIntOrNull()?.let { schedule.delaySeconds = it }

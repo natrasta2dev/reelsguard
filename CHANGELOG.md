@@ -6,6 +6,7 @@ Le projet suit le [versionnage sémantique](https://semver.org/lang/fr/) : une h
 ## [1.1.1] - 2026-10-29
 
 ### Modifié
+- Minuteur par app : **0 bloque l'app** (bouton masqué et sortie immédiate des vidéos courtes). Laisser la case vide = pas de minuteur propre, seule la limite commune s'applique.
 - Par défaut, seuls Instagram, YouTube et TikTok sont surveillés. Facebook, Snapchat, X, Reddit, Pinterest, Twitch et Threads restent disponibles et s'activent dans Réglages → Apps.
 
 ## [1.1.0] - 2026-10-29

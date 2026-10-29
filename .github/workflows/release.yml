@@ -1,8 +1,9 @@
 # Publie une release signée de ReelsGuard.
 #
 # Deux déclencheurs :
-#  - automatique : quand versionName change dans app/build.gradle.kts sur main,
-#    la release vX.Y.Z est créée (si elle n'existe pas déjà) ;
+#  - automatique : à chaque push sur main qui touche la version ou ce workflow,
+#    la release vX.Y.Z est créée ; si elle existe déjà sur un autre commit, elle est
+#    reconstruite sur le nouveau commit (tag déplacé, APK remplacé) ;
 #  - manuel : Releases → Draft a new release → tag vX.Y.Z → Publish release.
 #
 # Secrets requis (Settings → Secrets and variables → Actions) :
@@ -49,9 +50,13 @@ jobs:
             fi
           else
             TAG="v$VERSION"
-            if git ls-remote --exit-code --tags origin "refs/tags/$TAG" >/dev/null; then
-              echo "La release $TAG existe déjà : rien à publier."
+            REMOTE=$(git ls-remote --tags origin "refs/tags/$TAG" | cut -f1)
+            if [ "$REMOTE" = "$GITHUB_SHA" ]; then
+              echo "La release $TAG est déjà à jour : rien à publier."
               echo "skip=true" >> "$GITHUB_OUTPUT"
+            elif [ -n "$REMOTE" ]; then
+              echo "La release $TAG existe sur un autre commit : elle sera reconstruite sur $GITHUB_SHA."
+              echo "replace=true" >> "$GITHUB_OUTPUT"
             fi
           fi
           echo "TAG=$TAG" >> "$GITHUB_ENV"
@@ -121,6 +126,11 @@ jobs:
             echo "SHA-256 : \`$(cut -d' ' -f1 "$APK.sha256")\`"
           } >> notes.md
 
+      - name: Déplacer le tag sur ce commit (même version republiée)
+        if: steps.v.outputs.replace == 'true'
+        shell: bash
+        run: git push --force origin "$GITHUB_SHA:refs/tags/$TAG"
+
       - uses: softprops/action-gh-release@v2
         if: steps.v.outputs.skip != 'true'
         with:
@@ -132,3 +142,4 @@ jobs:
             ${{ env.APK }}
             ${{ env.APK }}.sha256
           make_latest: true
+          overwrite_files: true
