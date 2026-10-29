@@ -1,6 +1,6 @@
 # Politique de confidentialité — ReelsGuard
 
-*Dernière mise à jour : 27 octobre 2026*
+*Dernière mise à jour : 29 octobre 2026*
 
 ReelsGuard est édité par **Cod'Apps** ([codapps.fr](https://codapps.fr)). Cette politique décrit ce que l'application fait des informations présentes sur ton téléphone.
 
@@ -13,6 +13,7 @@ ReelsGuard **ne collecte, ne vend et ne transmet aucune donnée personnelle** à
 ReelsGuard utilise l'API d'accessibilité d'Android (`AccessibilityService`) uniquement pour :
 
 - savoir quelle application est au premier plan ;
+- dans un navigateur, lire l'adresse de la page affichée pour reconnaître les sites concernés (Instagram, YouTube, TikTok…). Cette adresse est comparée sur l'appareil, puis oubliée : elle n'est **ni enregistrée, ni transmise**, et l'historique de navigation n'est pas consulté ;
 - détecter si des vidéos courtes sont affichées dans les applications que tu as choisies ;
 - masquer le bouton correspondant et revenir en arrière une fois ta limite atteinte ;
 - en mode strict, fermer les pages des Paramètres qui concernent ReelsGuard.

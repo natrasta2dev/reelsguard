@@ -3,6 +3,15 @@
 Toutes les évolutions notables de ReelsGuard sont listées ici.
 Le projet suit le [versionnage sémantique](https://semver.org/lang/fr/) : une hausse du numéro **majeur** rend la mise à jour obligatoire dans l'application.
 
+## [1.1.0] - 2026-10-29
+
+### Ajouté
+- Versions web : Instagram, YouTube, TikTok, Facebook, Snapchat, X, Pinterest, Twitch et Threads sont aussi limités dans le navigateur (Chrome, Samsung Internet, Firefox, Edge, Brave, Opera, DuckDuckGo, Vivaldi, Kiwi). Le temps passé compte dans la même limite que les apps.
+
+### Corrigé
+- Notifications : après un refus, Android ne redemande plus. Un bouton « Activer les notifications » s'affiche tant qu'elles sont coupées et ouvre directement le bon réglage.
+- YouTube : l'écran « Respire » pouvait apparaître toutes les minutes pendant une vidéo normale. La détection des Shorts ignore désormais les éléments hors écran et demande 2 secondes de visionnage avant de réagir ; « Respire » ne revient pas avant 5 minutes.
+
 ## [1.0.1] - 2026-10-28
 
 ### Corrigé
@@ -40,5 +49,6 @@ Première version publique.
 - Mises à jour : notification pour une version mineure, écran obligatoire pour une version majeure.
 - Mode d'emploi intégré, diagnostic partageable, mentions légales et politique de confidentialité intégrées.
 
+[1.1.0]: https://github.com/natrasta2dev/reelsguard/releases/tag/v1.1.0
 [1.0.1]: https://github.com/natrasta2dev/reelsguard/releases/tag/v1.0.1
 [1.0.0]: https://github.com/natrasta2dev/reelsguard/releases/tag/v1.0.0

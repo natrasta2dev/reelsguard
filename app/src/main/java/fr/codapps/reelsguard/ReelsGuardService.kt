@@ -52,8 +52,18 @@ class ReelsGuardService : AccessibilityService() {
     private var warnedFiveMin = false
     private var lastWidgetUpdate = 0L
 
+    // Détection stabilisée : il faut 2 s de suite pour entrer, 3 s pour sortir (évite les faux positifs)
+    private var onTicks = 0
+    private var offTicks = 0
+    private var stableWatching = false
+
+    // Versions web : dernière adresse lue par navigateur (la barre se masque pendant le défilement)
+    private val lastUrl = HashMap<String, String>()
+    private var webKicks = 0
+
     // Session de visionnage (pause forcée + délai)
     private var lastWatchingAt = 0L
+    private var lastBreatheAt = 0L
     private var continuousMs = 0L
     private var pauseUntil = 0L // heure murale (ms)
 
@@ -105,7 +115,10 @@ class ReelsGuardService : AccessibilityService() {
             .filter { it.type == AccessibilityWindowInfo.TYPE_APPLICATION }
             .sortedByDescending { it.isFocused || it.isActive }
             .firstNotNullOfOrNull { w ->
-                w.root?.takeIf { AppRules.forPackage(it.packageName?.toString().orEmpty()) != null }
+                w.root?.takeIf { r ->
+                    val p = r.packageName?.toString().orEmpty()
+                    AppRules.forPackage(p) != null || WebRules.isBrowser(p)
+                }
             }
     }
 
@@ -138,20 +151,41 @@ class ReelsGuardService : AccessibilityService() {
         // Mode strict : pas d'accès aux pages de ReelsGuard dans les Paramètres.
         if (root != null && schedule.isLocked() && guardSettings(root, now)) return
 
-        val rule = root?.packageName?.toString()?.let { AppRules.forPackage(it) }
-        if (rule != currentRule) removeCover()
+        val pkg = root?.packageName?.toString()
+        var rule = pkg?.let { AppRules.forPackage(it) }
+
+        // Version web dans un navigateur : l'adresse dit de quel site et de quelle page il s'agit.
+        var web = false
+        var webWatching = false
+        if (root != null && pkg != null && rule == null && WebRules.isBrowser(pkg)) {
+            WebRules.readUrl(root, pkg)?.let { lastUrl[pkg] = it }
+            lastUrl[pkg]?.let { WebRules.match(it) }?.let { m ->
+                rule = m.rule; web = true; webWatching = m.watching
+            }
+        }
+
+        if (rule != currentRule) {
+            removeCover()
+            onTicks = 0; offTicks = 0; stableWatching = false
+        }
         currentRule = rule
 
         if (root == null || rule == null) {
             idle()
             return
         }
+        val r = rule!!
 
-        val watching = isWatching(rule, root)
-        reportDiagnostics(rule, root, watching, now)
+        val raw = if (web) webWatching else isWatching(r, root)
+        if (raw) { onTicks++; offTicks = 0 } else { offTicks++; onTicks = 0 }
+        if (!stableWatching && onTicks >= 2) stableWatching = true
+        if (stableWatching && offTicks >= 3) stableWatching = false
+        val watching = if (web || r.wholeApp) raw else stableWatching
+        if (!watching) webKicks = 0
+        if (!web) reportDiagnostics(r, root, raw, now)
 
         // App désélectionnée ou jour non actif : aucune restriction, aucun comptage.
-        if (!schedule.isAppEnabled(rule) || !schedule.isActiveToday()) {
+        if (!schedule.isAppEnabled(r) || !schedule.isActiveToday()) {
             idle()
             return
         }
@@ -159,7 +193,8 @@ class ReelsGuardService : AccessibilityService() {
         // Session : une coupure de plus de 2 min remet le compteur de visionnage continu à zéro.
         val gap = now - lastWatchingAt
         if (watching) {
-            if (gap > ENTRY_GAP_MS && blockReason(rule) == null && schedule.delayEnabled && breatheView == null) {
+            if (gap > ENTRY_GAP_MS && now - lastBreatheAt > BREATHE_COOLDOWN_MS &&
+                blockReason(r) == null && schedule.delayEnabled && breatheView == null) {
                 startBreathe(now)
             }
             lastWatchingAt = now
@@ -177,9 +212,9 @@ class ReelsGuardService : AccessibilityService() {
         val breathing = breatheView != null
 
         // Comptage
-        if (watching && !breathing && blockReason(rule) == null) {
-            store.addUsage(rule, elapsed)
-            maybeWarn(rule)
+        if (watching && !breathing && blockReason(r) == null) {
+            store.addUsage(r, elapsed)
+            maybeWarn(r)
             if (schedule.pauseEnabled) {
                 continuousMs += elapsed
                 if (continuousMs >= schedule.pauseAfterMin * 60_000L) {
@@ -190,18 +225,18 @@ class ReelsGuardService : AccessibilityService() {
         }
 
         // Blocage
-        val reason = blockReason(rule)
+        val reason = blockReason(r)
         if (reason != null) {
             stopBreathe(resume = false)
             notifier.cancel()
-            updateCover(findTab(rule, root), root.packageName.toString())
+            updateCover(if (web) null else findTab(r, root), root.packageName.toString())
             if (watching && now - lastKickOut > KICK_COOLDOWN_MS) {
                 lastKickOut = now
-                kickOut(rule, root, reason)
+                kickOut(r, root, reason, web)
             }
         } else {
             removeCover()
-            if (watching && !breathing) notifier.show("${store.remainingFor(rule) / 60_000 + 1} min restantes")
+            if (watching && !breathing) notifier.show("${store.remainingFor(r) / 60_000 + 1} min restantes")
             else notifier.cancel()
         }
     }
@@ -222,7 +257,14 @@ class ReelsGuardService : AccessibilityService() {
         if (::notifier.isInitialized) notifier.cancel()
     }
 
-    private fun kickOut(rule: AppRule, root: AccessibilityNodeInfo, msg: String) {
+    private fun kickOut(rule: AppRule, root: AccessibilityNodeInfo, msg: String, web: Boolean = false) {
+        if (web) {
+            // Navigateur : page précédente ; si on y est toujours, retour à l'écran d'accueil.
+            webKicks++
+            performGlobalAction(if (webKicks >= 3) GLOBAL_ACTION_HOME else GLOBAL_ACTION_BACK)
+            toast(msg)
+            return
+        }
         if (rule.wholeApp) {
             performGlobalAction(GLOBAL_ACTION_HOME)
             toast(msg)
@@ -268,6 +310,7 @@ class ReelsGuardService : AccessibilityService() {
     // ---------- écran « Respire » ----------
 
     private fun startBreathe(now: Long) {
+        lastBreatheAt = now
         breatheEndsAt = now + schedule.delaySeconds * 1000L
         mediaKey(KeyEvent.KEYCODE_MEDIA_PAUSE)
 
@@ -367,7 +410,7 @@ class ReelsGuardService : AccessibilityService() {
             val n = queue.removeFirst()
             scanned++
             val id = n.viewIdResourceName?.lowercase()
-            if (id != null && rule.markerIdParts.any { it in id }) return true
+            if (id != null && n.isVisibleToUser && rule.markerIdParts.any { it in id }) return true
             for (i in 0 until n.childCount) n.getChild(i)?.let(queue::add)
         }
         return false
@@ -557,7 +600,9 @@ class ReelsGuardService : AccessibilityService() {
         private const val TICK_MS = 1_000L
         private const val KICK_COOLDOWN_MS = 1_500L
         /** Absence de vidéos courtes au-delà de laquelle un retour compte comme une nouvelle ouverture. */
-        private const val ENTRY_GAP_MS = 15_000L
+        private const val ENTRY_GAP_MS = 60_000L
+        /** Délai minimal entre deux écrans « Respire ». */
+        private const val BREATHE_COOLDOWN_MS = 5 * 60_000L
         /** Absence au-delà de laquelle le visionnage continu (pause forcée) repart de zéro. */
         private const val SESSION_GAP_MS = 2 * 60_000L
 

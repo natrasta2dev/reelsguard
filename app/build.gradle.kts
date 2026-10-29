@@ -13,8 +13,8 @@ android {
         targetSdk = 34
         // Version : MAJEUR.MINEUR.CORRECTIF (une hausse du MAJEUR rend la mise à jour obligatoire).
         // Le tag Git de la release doit être identique, préfixé d'un « v » (ex. v1.0.0).
-        versionCode = 2
-        versionName = "1.0.1"
+        versionCode = 3
+        versionName = "1.1.0"
     }
 
     // Signature des releases : la clé n'est jamais dans le dépôt.

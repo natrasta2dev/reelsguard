@@ -3,6 +3,7 @@ package fr.codapps.reelsguard
 import android.Manifest
 import android.app.Activity
 import android.app.AlertDialog
+import android.app.NotificationManager
 import android.content.ComponentName
 import android.content.Intent
 import android.content.pm.PackageManager
@@ -43,6 +44,7 @@ class MainActivity : Activity() {
     private lateinit var mainScreen: View
     private lateinit var setupScreen: View
     private lateinit var updateBanner: TextView
+    private lateinit var notifBanner: TextView
     /** Écran affiché : "main", "setup" (service inactif) ou "update" (mise à jour obligatoire). */
     private var shown = ""
 
@@ -95,6 +97,11 @@ class MainActivity : Activity() {
         // Mise à jour facultative disponible
         updateBanner = ui.pill("", filled = c.accent, textColor = Color.WHITE) { UpdateChecker.openDownload(this) }
         root.addView(ui.centered(updateBanner, top = 40))
+
+        // Notifications refusées : Android ne redemande plus, on propose d'ouvrir le réglage
+        notifBanner = ui.pill("🔔  Activer les notifications", filled = null, textColor = c.accent) { fixNotifications() }
+        (notifBanner.background as GradientDrawable).setStroke(ui.dp(2), c.accent)
+        root.addView(ui.centered(notifBanner, top = 16))
 
         // Actions
         root.addView(ui.centered(ui.pill("Réglages", filled = c.fg, textColor = c.bg) {
@@ -193,9 +200,30 @@ class MainActivity : Activity() {
     }
 
     private fun askNotificationPermission() {
-        if (Build.VERSION.SDK_INT >= 33 &&
+        val prefs = getSharedPreferences("reelsguard_ui", MODE_PRIVATE)
+        if (Build.VERSION.SDK_INT >= 33 && !prefs.getBoolean("notif_asked", false) &&
             checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED
-        ) requestPermissions(arrayOf(Manifest.permission.POST_NOTIFICATIONS), 1)
+        ) {
+            prefs.edit().putBoolean("notif_asked", true).apply()
+            requestPermissions(arrayOf(Manifest.permission.POST_NOTIFICATIONS), 1)
+        }
+    }
+
+    private fun notificationsEnabled() = getSystemService(NotificationManager::class.java).areNotificationsEnabled()
+
+    /**
+     * Après un refus, Android n'affiche plus la demande (ou seulement une fois de plus) :
+     * on redemande si c'est encore possible, sinon on ouvre directement le réglage des notifications.
+     */
+    private fun fixNotifications() {
+        if (Build.VERSION.SDK_INT >= 33 &&
+            checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED &&
+            shouldShowRequestPermissionRationale(Manifest.permission.POST_NOTIFICATIONS)
+        ) {
+            requestPermissions(arrayOf(Manifest.permission.POST_NOTIFICATIONS), 1)
+            return
+        }
+        startActivity(Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS).putExtra(Settings.EXTRA_APP_PACKAGE, packageName))
     }
 
     // ---------- affichage ----------
@@ -256,6 +284,7 @@ class MainActivity : Activity() {
             else { setColor(c.accent); setStroke(0, Color.TRANSPARENT) }
         }
 
+        notifBanner.visibility = if (notificationsEnabled()) View.GONE else View.VISIBLE
         guide.visibility = if (guideOpen) View.VISIBLE else View.GONE
         guideToggle.text = if (guideOpen) "Masquer le mode d'emploi" else "Revoir le mode d'emploi"
     }
@@ -331,8 +360,9 @@ class MainActivity : Activity() {
             "Ouvrir les infos de l'appli", appSettings)
         steps += Step(
             "Autoriser les notifications",
-            "Infos de l'appli → Notifications → activer. Pour voir le temps restant et être prévenu des mises à jour.",
-            "Ouvrir les infos de l'appli", appSettings)
+            "Pour voir le temps restant et être prévenu des mises à jour. Si tu as déjà refusé, " +
+                "le bouton ouvre directement le réglage : active « Autoriser les notifications ».",
+            "Activer les notifications", { fixNotifications() })
         steps += Step(
             "Régler ta limite",
             "Dans Réglages : minutes par jour en semaine et le week-end, apps, jours, horaires, pause, délai et mode strict.",

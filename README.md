@@ -46,6 +46,8 @@ sans modifier les applications et sans collecter aucune donnée.
 
 Chaque app peut être activée ou désactivée dans les réglages.
 
+**Versions web** : ces sites sont aussi limités dans le navigateur (Chrome, Samsung Internet, Firefox, Edge, Brave, Opera, DuckDuckGo, Vivaldi, Kiwi), avec la même limite que les apps — par exemple `youtube.com/shorts`, `instagram.com/reels` ou `tiktok.com`. L'adresse de la page est seulement comparée sur le téléphone, jamais enregistrée ni envoyée.
+
 > Les applications surveillées changent régulièrement leur interface : la détection peut cesser de fonctionner après l'une de leurs mises à jour. Le [diagnostic intégré](#signaler-un-problème) aide à la corriger.
 
 ## Installation

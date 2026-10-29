@@ -72,7 +72,10 @@ object Legal {
                 "Utilisation du service d'accessibilité",
                 "ReelsGuard utilise l'API d'accessibilité d'Android uniquement pour : savoir quelle application est " +
                     "au premier plan, détecter si des vidéos courtes sont affichées, masquer le bouton correspondant " +
-                    "et revenir en arrière une fois la limite atteinte. En mode strict, il ferme les pages des Paramètres " +
+                    "et revenir en arrière une fois la limite atteinte. Dans un navigateur, il lit l'adresse de la page " +
+                    "affichée pour reconnaître les sites concernés (Instagram, YouTube, TikTok…) : cette adresse est " +
+                    "comparée sur l'appareil puis oubliée, jamais enregistrée ni transmise. " +
+                    "En mode strict, il ferme les pages des Paramètres " +
                     "qui concernent ReelsGuard. Aucune saisie (mots de passe, messages) n'est lue ni enregistrée."
             ),
             Section(
